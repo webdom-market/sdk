@@ -1,0 +1,3143 @@
+openapi: 3.0.3
+info:
+  title: Webdom Agent API
+  version: 0.1.0
+  license:
+    name: Apache-2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0.html
+  description: |
+    Machine-oriented API for AI agents operating on the Webdom marketplace.
+
+    Principles:
+    - public read API where possible;
+    - authenticated access via TON Proof challenge exchange into a bearer API token;
+    - normalized read models for domains, deals, offers, users, analytics, and history.
+    - default rate limit is 5 requests per second with burst 20, enforced per authenticated wallet and per client IP.
+
+    Operational notes:
+    - any endpoint in this API may return `429 Too Many Requests` when either the wallet-scoped or IP-scoped limiter is exceeded;
+    - the default limit can be increased on request; contact `t.me/domainer`.
+servers:
+  - url: https://webdom.market/api/agent/v1
+    description: Production
+  - url: /api/agent/v1
+    description: Relative to current host
+tags:
+  - name: Auth
+    description: Authentication helpers for TON Connect and TON Proof.
+  - name: Marketplace
+    description: Marketplace configuration and deploy parameters.
+  - name: Catalog
+    description: Search and discovery endpoints.
+  - name: Domains
+    description: Canonical domain read models and domain-specific analytics/history.
+  - name: Deals
+    description: Canonical deal models, bid history, and lifecycle history.
+  - name: Offers
+    description: Offer lookup and best-offer endpoints.
+  - name: Users
+    description: Public profiles and user activity.
+  - name: Analytics
+    description: Minimal agent-oriented market and comparable analytics.
+  - name: History
+    description: Global normalized event and transaction feeds.
+security:
+  - {}
+paths:
+  /auth/ton-proof/payload:
+    get:
+      tags: [Auth]
+      operationId: getTonProofPayload
+      summary: Get TON Proof challenge for agent authentication
+      description: |
+        Returns a single-use payload that the agent must sign via TON Proof.
+        The payload is short-lived and is later exchanged for a bearer API token.
+      responses:
+        '200':
+          description: TON Proof challenge
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TonProofChallengeEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/ton-proof/tokens:
+    post:
+      tags: [Auth]
+      operationId: exchangeTonProofForToken
+      summary: Exchange TON Proof for an agent API token
+      description: |
+        Verifies wallet ownership via TON Proof and issues a bearer API token bound to
+        the authenticated wallet. The plaintext token is returned only once at creation time.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TonProofTokenExchangeRequest'
+      responses:
+        '200':
+          description: Agent API token created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AgentApiTokenEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /auth/tokens/current:
+    delete:
+      tags: [Auth]
+      operationId: revokeCurrentToken
+      summary: Revoke the current agent API token
+      security:
+        - AgentBearerAuth: []
+      responses:
+        '200':
+          description: Agent API token revoked
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenRevocationEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /marketplace/config:
+    get:
+      tags: [Marketplace]
+      operationId: getMarketplaceConfig
+      summary: Get marketplace deploy configuration
+      description: |
+        Returns the current marketplace deploy configuration, including deploy fees,
+        commission rates, and per-contract deployment constraints.
+      responses:
+        '200':
+          description: Marketplace configuration
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketplaceConfigEnvelope'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /catalog/domains:
+    get:
+      tags: [Catalog]
+      operationId: listDomains
+      summary: Search domains
+      description: |
+        Machine-oriented domain discovery endpoint with cursor pagination.
+        All query parameters are optional unless explicitly marked as required.
+        Response shaping rules:
+        - The endpoint returns only domains produced by the requested filtering and sorting.
+        - No pinned or promoted domains are injected into the first page or any later page.
+        - No `pinned_count` or similar out-of-band pinned-domain metadata is returned.
+        Cursor contract:
+        - `cursor` is an opaque server-generated continuation token.
+        - The token is offset-based over the current ordered result set, not snapshot-based.
+        - Reuse `next_cursor` only with the same `sort` and the same filter set.
+        - Reusing a cursor with a different `sort` returns `400`.
+        - If matching rows are inserted, removed, or reordered between requests, duplicates or skips are possible.
+        - The end of the feed is indicated by `page_info.has_more = false` and `page_info.next_cursor = null`.
+        Sort-key null handling:
+        - For `current_price_ton.*`, `last_price_ton.*`, `last_sale_time.*`, `sale_created_at.*`, and `deal_ending_time.*`, rows without the sort key are always placed at the end of the result set (`nulls_last`), regardless of sort direction.
+        Multi-value filter semantics:
+        - `states`: OR
+        - `categories`: OR
+        - `marketplaces`: OR
+        - `clubs`: OR
+        - `dns_record_types`: AND
+        - `characters`: AND. The following combinations are invalid and return `400`:
+          `idn_domains` + `exclude_punycode`,
+          `digits_only` + `exclude_digits`,
+          `letters_only` + `digits_only`,
+          `with_hyphens` + `exclude_hyphens`,
+          `hyphen_separated` + `exclude_hyphens`.
+      parameters:
+        - $ref: '#/components/parameters/Search'
+        - $ref: '#/components/parameters/DomainZone'
+        - name: name_length_min
+          in: query
+          description: Optional inclusive lower bound for the domain label length, excluding the zone suffix.
+          schema:
+            type: integer
+            minimum: 1
+        - name: name_length_max
+          in: query
+          description: Optional inclusive upper bound for the domain label length, excluding the zone suffix.
+          schema:
+            type: integer
+            minimum: 1
+        - name: states
+          in: query
+          style: form
+          explode: true
+          description: Optional domain state filters. Multiple values are combined with OR semantics.
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/DomainStateFilter'
+        - name: categories
+          in: query
+          style: form
+          explode: true
+          description: Optional category filters. Multiple values are combined with OR semantics.
+          schema:
+            type: array
+            items:
+              type: string
+        - name: characters
+          in: query
+          style: form
+          explode: true
+          description: |
+            Optional character-set filters for the label part of the domain. Multiple values are combined with AND semantics.
+            The following combinations are invalid and return `400`: `idn_domains` + `exclude_punycode`, `digits_only` + `exclude_digits`, `letters_only` + `digits_only`, `with_hyphens` + `exclude_hyphens`, `hyphen_separated` + `exclude_hyphens`.
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/CharacterFilter'
+        - name: dns_record_types
+          in: query
+          style: form
+          explode: true
+          description: Optional DNS record presence filters. Multiple values are combined with AND semantics.
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/DnsRecordType'
+        - name: clubs
+          in: query
+          style: form
+          explode: true
+          description: Optional club-membership filters. Multiple values are combined with OR semantics.
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [club_10k, club_100k]
+        - name: marketplaces
+          in: query
+          style: form
+          explode: true
+          description: Marketplace names. Supported values are `webdom`, `getgems`, `fragment`, `marketapp`.
+          schema:
+            type: array
+            items:
+              type: string
+              enum: [webdom, getgems, fragment, marketapp]
+        - $ref: '#/components/parameters/PriceTonMin'
+        - $ref: '#/components/parameters/PriceTonMax'
+        - name: expiration_before
+          in: query
+          description: Optional inclusive upper bound for domain expiration time.
+          schema:
+            type: string
+            format: date-time
+        - name: expiration_after
+          in: query
+          description: Optional inclusive lower bound for domain expiration time.
+          schema:
+            type: string
+            format: date-time
+        - name: linked_wallet_address
+          in: query
+          description: Optional filter by the linked wallet address resolved from the domain wallet record.
+          schema:
+            $ref: '#/components/schemas/AddressObject'
+        - name: owner_address
+          in: query
+          description: Optional filter by the current owner wallet address.
+          schema:
+            $ref: '#/components/schemas/AddressObject'
+        - name: is_banned
+          in: query
+          description: Optional filter by the domain moderation flag.
+          schema:
+            type: boolean
+        - $ref: '#/components/parameters/SortCatalogDomains'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Domain search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainListEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /catalog/deals:
+    get:
+      tags: [Catalog]
+      operationId: listDeals
+      summary: Search deals
+      description: |
+        Cursor contract:
+        - `cursor` is an opaque server-generated continuation token.
+        - The token is offset-based over the current ordered result set, not snapshot-based.
+        - Reuse `next_cursor` only with the same `sort` and the same filter set.
+        - Reusing a cursor with a different `sort` returns `400`.
+        - If matching rows are inserted, removed, or reordered between requests, duplicates or skips are possible.
+        - The end of the feed is indicated by `page_info.has_more = false` and `page_info.next_cursor = null`.
+        Price-sort handling:
+        - For `price_ton.*` and `execution_price.*`, deals without the corresponding sort key are always placed at the end of the result set (`nulls_last`).
+        - `domains_swap` rows do not interleave with priced deals for price-based sorts; they remain in the tail portion of the result set.
+      parameters:
+        - name: types
+          in: query
+          style: form
+          explode: true
+          description: Optional deal type filters. Multiple values are combined with OR semantics.
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/DealType'
+        - name: states
+          in: query
+          style: form
+          explode: true
+          description: Optional deal state filters. Multiple values are combined with OR semantics.
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/DealState'
+        - name: domain_name
+          in: query
+          description: Optional exact domain-name filter. Matches deals containing the specified domain.
+          schema:
+            type: string
+        - $ref: '#/components/parameters/DomainZone'
+        - name: seller_address
+          in: query
+          description: Optional filter by seller wallet address.
+          schema:
+            $ref: '#/components/schemas/AddressObject'
+        - name: buyer_address
+          in: query
+          description: Optional filter by buyer or latest bidder wallet address, depending on deal type.
+          schema:
+            $ref: '#/components/schemas/AddressObject'
+        - name: marketplace_address
+          in: query
+          description: Optional filter by marketplace contract address.
+          schema:
+            $ref: '#/components/schemas/AddressObject'
+        - name: currency
+          in: query
+          description: Optional filter by the deal's native pricing currency.
+          schema:
+            $ref: '#/components/schemas/CurrencyCode'
+        - $ref: '#/components/parameters/PriceTonMin'
+        - $ref: '#/components/parameters/PriceTonMax'
+        - name: created_after
+          in: query
+          description: Optional inclusive lower bound for deal creation time.
+          schema:
+            type: string
+            format: date-time
+        - name: created_before
+          in: query
+          description: Optional inclusive upper bound for deal creation time.
+          schema:
+            type: string
+            format: date-time
+        - name: expiration_after
+          in: query
+          description: Optional. Deal expiration lower bound.
+          schema:
+            type: string
+            format: date-time
+        - name: expiration_before
+          in: query
+          description: Optional. Deal expiration upper bound.
+          schema:
+            type: string
+            format: date-time
+        - name: is_collection
+          in: query
+          description: Optional filter for multi-domain deals. `true` keeps collection-like deals; `false` keeps single-domain deals.
+          schema:
+            type: boolean
+        - name: sort
+          in: query
+          description: Deal ordering mode. Reuse any returned cursor only with the same sort value. `execution_price.*` sorts by TON-normalized execution price.
+          schema:
+            type: string
+            enum:
+              - created_at.desc
+              - created_at.asc
+              - expiration.desc
+              - expiration.asc
+              - price_ton.desc
+              - price_ton.asc
+              - execution_price.desc
+              - execution_price.asc
+            default: created_at.desc
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Deal search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DealListEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+
+  /domains/resolve:
+    get:
+      tags: [Domains]
+      operationId: resolveDomain
+      summary: Resolve domain name to wallet-related data
+      description: |
+        Resolution semantics:
+        - `404` means the domain does not exist.
+        - `200` with `resolved_wallet_address = null` means the domain exists, but no linked wallet or wallet DNS record is available.
+      parameters:
+        - name: domain_name
+          in: query
+          required: true
+          description: Required. Domain name to resolve.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Resolve result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolveEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /domains/back-resolve:
+    get:
+      tags: [Domains]
+      operationId: backResolveDomain
+      summary: Back resolve wallet address to domain
+      description: |
+        Reverse-resolution semantics:
+        - `200` with `domain_name = null` means no reverse mapping was found for the provided wallet address.
+        - `404` is not used by this endpoint for reverse-resolution misses.
+      parameters:
+        - name: address
+          in: query
+          required: true
+          description: Required. Wallet address to back resolve.
+          schema:
+            $ref: '#/components/schemas/AddressObject'
+      responses:
+        '200':
+          description: Back resolve result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BackResolveEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /domains/{domain_name}:
+    get:
+      tags: [Domains]
+      operationId: getDomain
+      summary: Get domain details
+      parameters:
+        - $ref: '#/components/parameters/DomainNamePath'
+      responses:
+        '200':
+          description: Domain details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainEnvelope'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /domains/{domain_name}/history:
+    get:
+      tags: [Domains]
+      operationId: listDomainTransactions
+      summary: Get domain transaction history
+      description: |
+        Ordered by descending blockchain position. Pagination is seek-based via `after_lt`
+        and stable tie-breaking is done with transaction hash on equal `lt`.
+      parameters:
+        - $ref: '#/components/parameters/DomainNamePath'
+        - name: action_types
+          in: query
+          style: form
+          explode: true
+          description: Optional transaction action-type filters. Multiple values are combined with OR semantics.
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/DomainActionType'
+        - $ref: '#/components/parameters/AfterTime'
+        - $ref: '#/components/parameters/BeforeTime'
+        - name: after_lt
+          in: query
+          description: Optional exclusive seek cursor based on blockchain logical time (`lt`) for descending domain-history pagination.
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Domain history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionListEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /deals/{deal_address}:
+    get:
+      tags: [Deals]
+      operationId: getDeal
+      summary: Get deal details
+      parameters:
+        - $ref: '#/components/parameters/DealAddressPath'
+      responses:
+        '200':
+          description: Deal details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DealEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /deals/{deal_address}/bids:
+    get:
+      tags: [Deals]
+      operationId: listDealBids
+      summary: Get auction bid history
+      description: |
+        Results are ordered by chain position descending: `lt DESC`, then `tx_hash DESC`.
+        Cursor contract:
+        - `cursor` is an opaque server-generated continuation token.
+        - The token is offset-based over the current ordered result set, not snapshot-based.
+        - Reuse `next_cursor` only with the same request parameters.
+        - If matching rows are inserted, removed, or reordered between requests, duplicates or skips are possible.
+        - The end of the feed is indicated by `page_info.has_more = false` and `page_info.next_cursor = null`.
+      parameters:
+        - $ref: '#/components/parameters/DealAddressPath'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Auction bid history
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BidListEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+
+  /offers/{offer_address}:
+    get:
+      tags: [Offers]
+      operationId: getOffer
+      summary: Get offer details
+      parameters:
+        - $ref: '#/components/parameters/OfferAddressPath'
+      responses:
+        '200':
+          description: Offer details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OfferEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /offers/best:
+    get:
+      tags: [Offers]
+      operationId: getBestOffer
+      summary: Get best offer for a domain
+      description: |
+        Best-offer lookup semantics:
+        - `404` means the domain does not exist.
+        - `200` with `offer = null` means the domain exists, but there are no active offers.
+      parameters:
+        - name: domain_name
+          in: query
+          required: true
+          description: Required. Domain name for which the best active offer should be returned.
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Best offer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BestOfferEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /offers/my:
+    get:
+      tags: [Offers]
+      operationId: listMyOffers
+      summary: Get incoming and outgoing offers for current authenticated user
+      description: |
+        `incoming` includes offers targeting domains currently controlled by the authenticated user,
+        including domain-level quick-sale style multiple offers.
+        Both `incoming` and `outgoing` contain only active, not-expired offers or offer rows.
+      security:
+        - AgentBearerAuth: []
+      responses:
+        '200':
+          description: Incoming and outgoing offers
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MyOffersEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /users/search:
+    get:
+      tags: [Users]
+      operationId: searchUsers
+      summary: Search users
+      description: |
+        Searches users by a generic search string across supported identity fields.
+        Results use the endpoint-defined deterministic search ranking for the current `search` value.
+        Cursor contract:
+        - `cursor` is an opaque server-generated continuation token.
+        - The token is offset-based over the current ordered result set, not snapshot-based.
+        - Reuse `next_cursor` only with the same `search` value.
+        - If matching rows or ranking inputs change between requests, duplicates or skips are possible.
+        - The end of the feed is indicated by `page_info.has_more = false` and `page_info.next_cursor = null`.
+      parameters:
+        - name: search
+          in: query
+          required: true
+          description: Required free-form search string matched against supported public user identity fields.
+          schema:
+            type: string
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: User search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserListEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /users/{address}:
+    get:
+      tags: [Users]
+      operationId: getUser
+      summary: Get public user profile and stats
+      description: |
+        This endpoint accepts optional bearer authentication.
+        When the caller is authenticated, viewer-dependent fields are resolved relative to that viewer.
+        For unauthenticated requests:
+        - `viewer_context.is_owner = false`
+        - `viewer_context.is_watching = false`
+        - `subscription = null`
+      security:
+        - {}
+        - AgentBearerAuth: []
+      parameters:
+        - $ref: '#/components/parameters/UserAddressPath'
+      responses:
+        '200':
+          description: User profile
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /users/{address}/activity:
+    get:
+      tags: [Users]
+      operationId: listUserActivity
+      summary: Get user-related transaction history
+      description: |
+        Results are ordered by chain position descending: `lt DESC`, then `tx_hash DESC`.
+        Cursor contract:
+        - `cursor` is an opaque server-generated continuation token.
+        - The token is offset-based over the current ordered result set, not snapshot-based.
+        - Reuse `next_cursor` only with the same request parameters.
+        - If matching rows are inserted, removed, or reordered between requests, duplicates or skips are possible.
+        - The end of the feed is indicated by `page_info.has_more = false` and `page_info.next_cursor = null`.
+      parameters:
+        - $ref: '#/components/parameters/UserAddressPath'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: User activity
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionListEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /analytics/market/overview:
+    get:
+      tags: [Analytics]
+      operationId: getMarketOverview
+      summary: Get market overview analytics
+      description: |
+        Returns analytics derived from a precomputed snapshot.
+        The response is not transactionally real-time.
+        `snapshot_updated_at` is the snapshot generation timestamp exposed by the API.
+      parameters:
+        - $ref: '#/components/parameters/RequiredDomainZone'
+      responses:
+        '200':
+          description: Market overview
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketOverviewEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /analytics/market/charts:
+    get:
+      tags: [Analytics]
+      operationId: getMarketCharts
+      summary: Get market chart data
+      description: |
+        Returns analytics derived from a precomputed snapshot.
+        The response is not transactionally real-time.
+        `snapshot_updated_at` is the snapshot generation timestamp exposed by the API.
+      parameters:
+        - $ref: '#/components/parameters/RequiredDomainZone'
+      responses:
+        '200':
+          description: Market charts
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MarketChartsEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /analytics/market/top-sales:
+    get:
+      tags: [Analytics]
+      operationId: listTopSales
+      summary: Get top sales list
+      description: |
+        Returns analytics derived from a precomputed snapshot.
+        The response is not transactionally real-time.
+        `snapshot_updated_at` is the snapshot generation timestamp exposed by the API.
+      parameters:
+        - $ref: '#/components/parameters/RequiredDomainZone'
+        - name: sale_segment
+          in: query
+          required: true
+          description: Required sale segment selector. Use `primary` for mints and `secondary` for resale transactions.
+          schema:
+            type: string
+            enum: [primary, secondary]
+        - name: currency
+          in: query
+          description: Optional currency used to rank and normalize top-sale results.
+          schema:
+            $ref: '#/components/schemas/CurrencyCode'
+        - name: offset
+          in: query
+          description: Zero-based page offset into the precomputed top-sales snapshot.
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Top sales
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TopSaleListEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /analytics/users/rankings:
+    get:
+      tags: [Analytics]
+      operationId: listUserRankings
+      summary: Get user rankings
+      parameters:
+        - name: rating
+          in: query
+          required: true
+          description: Required ranking metric used to order users.
+          schema:
+            type: string
+            enum:
+              - domains_count
+              - sales_count
+              - sales_volume
+              - primary_purchases_count
+              - primary_purchases_volume
+              - secondary_purchases_count
+              - secondary_purchases_volume
+              - total_purchases_volume
+        - $ref: '#/components/parameters/DomainZone'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: User rankings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserRankingEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /analytics/prices/jettons:
+    get:
+      tags: [Analytics]
+      operationId: getJettonPrices
+      summary: Get jetton price baselines
+      description: |
+        Returns the latest jetton price snapshot exposed by the API.
+        `source_timestamp` is the timestamp of the upstream price source snapshot used for these values.
+        `generated_at` is the timestamp when this response payload was generated.
+      responses:
+        '200':
+          description: Jetton prices
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/JettonPricesEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /history/transactions:
+    get:
+      tags: [History]
+      operationId: listTransactions
+      summary: Get global transaction feed
+      description: |
+        Cursor contract:
+        - `cursor` is an opaque server-generated continuation token.
+        - The token is offset-based over the current ordered result set, not snapshot-based.
+        - Reuse `next_cursor` only with the same `sort` and the same filter set.
+        - Reusing a cursor with a different `sort` returns `400`.
+        - If matching rows are inserted, removed, or reordered between requests, duplicates or skips are possible.
+        - The end of the feed is indicated by `page_info.has_more = false` and `page_info.next_cursor = null`.
+        Ordering details:
+        - `time.*` sorts are ordered by chain position using `lt` and `tx_hash`.
+        - `domain.*` sorts use `domain_name` with `lt` and `tx_hash` as deterministic tie-breakers.
+        - `price_ton.*` sorts use normalized TON value rather than a raw response field, with `lt` and `tx_hash` as deterministic tie-breakers.
+        - `price_ton.asc|desc` excludes rows that do not have a normalized TON price before sorting is applied; this is filtering, not `nulls_last`.
+      parameters:
+        - name: types
+          in: query
+          style: form
+          explode: true
+          description: Optional transaction action-type filters. Multiple values are combined with OR semantics.
+          schema:
+            type: array
+            items:
+              $ref: '#/components/schemas/DomainActionType'
+        - name: domain_name
+          in: query
+          description: Optional exact domain-name filter.
+          schema:
+            type: string
+        - $ref: '#/components/parameters/DomainZone'
+        - name: deal_address
+          in: query
+          description: Optional filter by deal contract address.
+          schema:
+            $ref: '#/components/schemas/AddressObject'
+        - name: user_address
+          in: query
+          description: Optional filter for transactions involving the specified wallet address.
+          schema:
+            $ref: '#/components/schemas/AddressObject'
+        - name: only_webdom
+          in: query
+          description: Optional flag restricting the feed to transactions attributed to Webdom.
+          schema:
+            type: boolean
+            default: false
+        - $ref: '#/components/parameters/PriceTonMin'
+        - $ref: '#/components/parameters/PriceTonMax'
+        - $ref: '#/components/parameters/AfterTime'
+        - $ref: '#/components/parameters/BeforeTime'
+        - name: sort
+          in: query
+          description: Feed ordering mode. Reuse any returned cursor only with the same sort value.
+          schema:
+            type: string
+            enum:
+              - time.desc
+              - time.asc
+              - price_ton.desc
+              - price_ton.asc
+              - domain.asc
+              - domain.desc
+            default: time.desc
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Transaction feed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionListEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /history/auctions/bids:
+    get:
+      tags: [History]
+      operationId: listAuctionBids
+      summary: Get global auction bid feed
+      description: |
+        Results are ordered by chain position descending: `lt DESC`, then `tx_hash DESC`.
+        Cursor contract:
+        - `cursor` is an opaque server-generated continuation token.
+        - The token is offset-based over the current ordered result set, not snapshot-based.
+        - Reuse `next_cursor` only with the same request parameters.
+        - If matching rows are inserted, removed, or reordered between requests, duplicates or skips are possible.
+        - The end of the feed is indicated by `page_info.has_more = false` and `page_info.next_cursor = null`.
+      parameters:
+        - $ref: '#/components/parameters/AfterTime'
+        - $ref: '#/components/parameters/BeforeTime'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Auction bid feed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BidListEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+  /history/sales:
+    get:
+      tags: [History]
+      operationId: listSales
+      summary: Get global completed sale feed
+      description: |
+        Results are ordered by chain position descending: `lt DESC`, then `tx_hash DESC`.
+        Cursor contract:
+        - `cursor` is an opaque server-generated continuation token.
+        - The token is offset-based over the current ordered result set, not snapshot-based.
+        - Reuse `next_cursor` only with the same filter set.
+        - If matching rows are inserted, removed, or reordered between requests, duplicates or skips are possible.
+        - The end of the feed is indicated by `page_info.has_more = false` and `page_info.next_cursor = null`.
+      parameters:
+        - $ref: '#/components/parameters/AfterTime'
+        - $ref: '#/components/parameters/BeforeTime'
+        - $ref: '#/components/parameters/DomainZone'
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Completed sale feed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TransactionListEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
+components:
+  securitySchemes:
+    AgentBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: API Token
+      description: |
+        Agent-scoped bearer token issued after successful TON Proof verification.
+
+  parameters:
+    DomainNamePath:
+      name: domain_name
+      in: path
+      required: true
+      description: Canonical domain name, including zone suffix, for example `alice.ton` or `alice.t.me`.
+      schema:
+        type: string
+    DealAddressPath:
+      name: deal_address
+      in: path
+      required: true
+      description: Deal contract address in user-friendly TON address format.
+      schema:
+        $ref: '#/components/schemas/AddressObject'
+    OfferAddressPath:
+      name: offer_address
+      in: path
+      required: true
+      description: Offer contract address in user-friendly TON address format.
+      schema:
+        $ref: '#/components/schemas/AddressObject'
+    UserAddressPath:
+      name: address
+      in: path
+      required: true
+      description: User wallet address in user-friendly TON address format.
+      schema:
+        $ref: '#/components/schemas/AddressObject'
+    Search:
+      name: search
+      in: query
+      description: Free-form search string interpreted by the target endpoint.
+      schema:
+        type: string
+    DomainZone:
+      name: domain_zone
+      in: query
+      description: Optional domain zone filter. Use `ton` for `.ton` domains or `t.me` for Telegram usernames.
+      schema:
+        type: string
+        enum: [ton, t.me]
+    RequiredDomainZone:
+      name: domain_zone
+      in: query
+      required: true
+      description: Required domain zone selector. Use `ton` for `.ton` domains or `t.me` for Telegram usernames.
+      schema:
+        type: string
+        enum: [ton, t.me]
+    PriceTonMin:
+      name: price_ton_min
+      in: query
+      description: Optional inclusive lower bound for normalized TON price, in human-readable TON units such as `10.1`.
+      schema:
+        type: string
+        pattern: '^\\d+(\\.\\d+)?$'
+    PriceTonMax:
+      name: price_ton_max
+      in: query
+      description: Optional inclusive upper bound for normalized TON price, in human-readable TON units such as `10.1`.
+      schema:
+        type: string
+        pattern: '^\\d+(\\.\\d+)?$'
+    SortCatalogDomains:
+      name: sort
+      in: query
+      description: Domain ordering mode. Reuse any returned cursor only with the same sort value. For `current_price_ton.*`, `last_price_ton.*`, `last_sale_time.*`, `sale_created_at.*`, and `deal_ending_time.*`, rows without the sort key are always placed at the end of the result set (`nulls_last`), regardless of sort direction.
+      schema:
+        type: string
+        enum:
+          - relevance.desc
+          - name.asc
+          - name.desc
+          - name_length.asc
+          - name_length.desc
+          - last_renewal_time.desc
+          - last_renewal_time.asc
+          - registration_time.desc
+          - registration_time.asc
+          - current_price_ton.desc
+          - current_price_ton.asc
+          - last_price_ton.desc
+          - last_price_ton.asc
+          - last_sale_time.desc
+          - last_sale_time.asc
+          - last_price_difference_ton.desc
+          - last_price_difference_ton.asc
+          - sale_created_at.asc
+          - sale_created_at.desc
+          - deal_ending_time.asc
+          - watchlists_count.desc
+        default: relevance.desc
+    Cursor:
+      name: cursor
+      in: query
+      description: |
+        Opaque server-generated continuation token for cursor pagination.
+        For offset-based feeds in this API, the token binds to the endpoint ordering and, where applicable, to the explicit `sort` value.
+      schema:
+        type: string
+    Limit:
+      name: limit
+      in: query
+      description: Optional page size. Default is `50`; maximum is `100`.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 50
+    AfterTime:
+      name: after_time
+      in: query
+      description: Optional inclusive lower bound for event or transaction timestamp.
+      schema:
+        type: string
+        format: date-time
+    BeforeTime:
+      name: before_time
+      in: query
+      description: Optional inclusive upper bound for event or transaction timestamp.
+      schema:
+        type: string
+        format: date-time
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters or payload
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    Unauthorized:
+      description: Authentication required or token is invalid
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    NotFound:
+      description: Requested resource does not exist
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    TooManyRequests:
+      description: Rate limit exceeded
+      headers:
+        Retry-After:
+          description: Seconds until the next request is allowed for the scope that exceeded the rate limit.
+          schema:
+            type: integer
+            minimum: 1
+        X-RateLimit-Limit:
+          description: Burst size for the scope that exceeded the rate limit.
+          schema:
+            type: integer
+            minimum: 1
+        X-RateLimit-Remaining:
+          description: Remaining whole requests currently available in the bucket for the exceeded scope.
+          schema:
+            type: integer
+            minimum: 0
+        X-RateLimit-Reset:
+          description: Seconds until the next request is allowed for the exceeded scope.
+          schema:
+            type: integer
+            minimum: 1
+        X-RateLimit-Scope:
+          description: Scope that exceeded the rate limit.
+          schema:
+            type: string
+            enum: [wallet, ip]
+        X-RateLimit-Policy:
+          description: Applied rate-limit policy string, for example `5rps; burst=20`.
+          schema:
+            type: string
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+  schemas:
+    TonProofChallenge:
+      type: object
+      properties:
+        challenge_id:
+          type: string
+          format: uuid
+        payload:
+          type: string
+        issued_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+      required:
+        - challenge_id
+        - payload
+        - issued_at
+        - expires_at
+
+    TonProofDomain:
+      type: object
+      properties:
+        lengthBytes:
+          type: integer
+        value:
+          type: string
+      required: [lengthBytes, value]
+
+    TonProofProof:
+      type: object
+      properties:
+        timestamp:
+          type: integer
+        domain:
+          $ref: '#/components/schemas/TonProofDomain'
+        payload:
+          type: string
+        signature:
+          type: string
+          description: Base64-encoded TON Proof signature.
+        state_init:
+          type: string
+          nullable: true
+      required: [timestamp, domain, payload, signature]
+
+    TonProofTokenExchangeRequest:
+      type: object
+      properties:
+        challenge_id:
+          type: string
+          format: uuid
+        wallet_address:
+          $ref: '#/components/schemas/AddressObject'
+        wallet_public_key:
+          type: string
+          pattern: '^(0x)?[0-9a-fA-F]{64}$'
+          description: Hex-encoded wallet public key.
+        proof:
+          $ref: '#/components/schemas/TonProofProof'
+        expires_in_seconds:
+          type: integer
+          minimum: 300
+          nullable: true
+          description: Optional token TTL. If omitted, the server default is used.
+      required:
+        - challenge_id
+        - wallet_address
+        - wallet_public_key
+        - proof
+
+    AgentApiToken:
+      type: object
+      properties:
+        token_type:
+          type: string
+          enum: [Bearer]
+        access_token:
+          type: string
+          description: Returned only at token creation time.
+        wallet_address:
+          $ref: '#/components/schemas/AddressObject'
+        expires_at:
+          type: string
+          format: date-time
+          nullable: true
+      required:
+        - token_type
+        - access_token
+        - wallet_address
+        - expires_at
+
+    TokenRevocationResult:
+      type: object
+      properties:
+        revoked:
+          type: boolean
+        revoked_at:
+          type: string
+          format: date-time
+      required: [revoked, revoked_at]
+
+    CurrencyCode:
+      type: string
+      enum: [TON, USDT, WEB3]
+
+    DomainZoneValue:
+      type: string
+      enum: [ton, t.me]
+
+    DomainStateFilter:
+      type: string
+      enum:
+        - for_primary_auction
+        - for_sale
+        - for_secondary_auction
+        - not_for_sale
+        - collection
+        - expired
+        - for_auction_with_bids
+
+    CharacterFilter:
+      type: string
+      description: Character-set filter for the domain label. Invalid combinations are `idn_domains` + `exclude_punycode`, `digits_only` + `exclude_digits`, `letters_only` + `digits_only`, `with_hyphens` + `exclude_hyphens`, and `hyphen_separated` + `exclude_hyphens`.
+      enum:
+        - exclude_hyphens
+        - exclude_digits
+        - idn_domains
+        - exclude_punycode
+        - digits_only
+        - letters_only
+        - with_hyphens
+        - hyphen_separated
+
+    DnsRecordType:
+      type: string
+      enum: [wallet, ton_storage, ton_site]
+
+    DealType:
+      type: string
+      enum:
+        - fix_price_sale
+        - auction
+        - domains_swap
+
+    OfferType:
+      type: string
+      enum: [purchase_offer, multiple_offer]
+
+    DealState:
+      type: string
+      enum: [uninitialized, active, completed, cancelled]
+
+    OfferState:
+      type: string
+      enum: [active, completed, cancelled, inactive]
+
+    DomainActionType:
+      type: string
+      enum:
+        - primary_purchase
+        - secondary_purchase
+        - put_on_sale
+        - cancel_sale
+        - put_on_auction
+        - dns_auction_bid
+        - cancel_auction
+        - transfer
+        - renew
+        - change_records
+        - change_sale_price
+
+    AddressObject:
+      type: string
+      description: Canonical user-friendly TON address string used across the public API.
+      minLength: 48
+      maxLength: 48
+      pattern: '^[A-Za-z0-9_-]{48}$'
+
+    Money:
+      type: object
+      properties:
+        amount:
+          type: string
+        decimals:
+          type: integer
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        amount_decimal:
+          type: number
+          format: double
+          description: Human-readable decimal amount in the currency's major units, for example `10.1`.
+      required: [amount, decimals, currency, amount_decimal]
+
+    Meta:
+      type: object
+      properties:
+        request_id:
+          type: string
+        api_version:
+          type: string
+      required: [request_id, api_version]
+
+    PageInfo:
+      type: object
+      properties:
+        next_cursor:
+          type: string
+          nullable: true
+          description: "Opaque continuation token for the next page. `null` when there is no next page."
+        has_more:
+          type: boolean
+          description: "`true` when another page is available for the same query and ordering."
+      required: [next_cursor, has_more]
+
+    ErrorObject:
+      type: object
+      properties:
+        code:
+          type: string
+          enum:
+            - INVALID_ARGUMENT
+            - UNAUTHORIZED
+            - NOT_FOUND
+            - TOO_MANY_REQUESTS
+            - INTERNAL_ERROR
+        message:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+        retryable:
+          type: boolean
+        blocking_issues:
+          type: array
+          items:
+            type: string
+        suggested_fixes:
+          type: array
+          items:
+            type: string
+      required: [code, message]
+
+    ErrorEnvelope:
+      type: object
+      properties:
+        success:
+          type: boolean
+          enum: [false]
+        error:
+          $ref: '#/components/schemas/ErrorObject'
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required: [success, error, meta]
+
+    DomainStatus:
+      type: object
+      properties:
+        is_expired:
+          type: boolean
+        is_banned:
+          type: boolean
+        is_on_primary_auction:
+          type: boolean
+        is_for_sale:
+          type: boolean
+        is_on_secondary_auction:
+          type: boolean
+        is_on_swap_contract:
+          type: boolean
+      required:
+        - is_expired
+        - is_banned
+        - is_on_primary_auction
+        - is_for_sale
+        - is_on_secondary_auction
+        - is_on_swap_contract
+
+    DnsRecords:
+      type: object
+      properties:
+        wallet:
+          type: string
+          nullable: true
+        ton_site:
+          type: string
+          nullable: true
+        ton_storage:
+          type: string
+          nullable: true
+        raw:
+          type: object
+          additionalProperties: true
+      required: [wallet, ton_site, ton_storage, raw]
+
+    CurrentSaleSummary:
+      type: object
+      properties:
+        address:
+          $ref: '#/components/schemas/AddressObject'
+        deal_type:
+          $ref: '#/components/schemas/DealType'
+        price:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        valid_until:
+          type: string
+          format: date-time
+      required: [address, deal_type, price, created_at, valid_until]
+
+    BestOfferSummary:
+      type: object
+      properties:
+        offer_address:
+          $ref: '#/components/schemas/AddressObject'
+        offer_type:
+          $ref: '#/components/schemas/OfferType'
+        price:
+          $ref: '#/components/schemas/Money'
+        valid_until:
+          type: string
+          format: date-time
+      required: [offer_address, offer_type, price, valid_until]
+
+    LastSaleSummary:
+      type: object
+      properties:
+        price:
+          $ref: '#/components/schemas/Money'
+        time:
+          type: string
+          format: date-time
+      required: [price, time]
+
+    Domain:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [domain]
+        name:
+          type: string
+        domain_zone:
+          $ref: '#/components/schemas/DomainZoneValue'
+        name_length:
+          type: integer
+        address:
+          $ref: '#/components/schemas/AddressObject'
+        owner:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/AddressObject'
+          nullable: true
+        owner_inited:
+          type: boolean
+        status:
+          $ref: '#/components/schemas/DomainStatus'
+        sale_type:
+          type: string
+          nullable: true
+          enum: [fix_price, auction, domain_swap]
+        sale_address:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/AddressObject'
+          nullable: true
+        linked_wallet_address:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/AddressObject'
+          nullable: true
+        dns_records:
+          $ref: '#/components/schemas/DnsRecords'
+        categories:
+          type: array
+          items:
+            type: string
+        description:
+          type: string
+          nullable: true
+        watchlists_count:
+          type: integer
+        relevance_score:
+          type: string
+          description: Packed relevance score serialized as a string because the value can exceed JavaScript's safe integer range.
+        last_renewal_time:
+          type: string
+          format: date-time
+        registration_time:
+          type: string
+          format: date-time
+          nullable: true
+        last_sale:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/LastSaleSummary'
+          nullable: true
+        current_sale:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/CurrentSaleSummary'
+          nullable: true
+        last_updated_at:
+          type: string
+          format: date-time
+      required:
+        - type
+        - name
+        - domain_zone
+        - name_length
+        - address
+        - owner
+        - owner_inited
+        - status
+        - sale_type
+        - sale_address
+        - linked_wallet_address
+        - dns_records
+        - categories
+        - description
+        - watchlists_count
+        - relevance_score
+        - last_renewal_time
+        - registration_time
+        - last_sale
+        - current_sale
+        - last_updated_at
+
+    MarketParticipants:
+      type: object
+      properties:
+        seller_address:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/AddressObject'
+          nullable: true
+        buyer_address:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/AddressObject'
+          nullable: true
+        owner_address:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/AddressObject'
+          nullable: true
+        last_bidder_address:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/AddressObject'
+          nullable: true
+      required: [seller_address, buyer_address, owner_address, last_bidder_address]
+
+    DealPricing:
+      type: object
+      properties:
+        price:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          nullable: true
+        execution_price_ton:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          nullable: true
+        next_min_bid:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          nullable: true
+        min_bid_value:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          nullable: true
+        max_bid_value:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          nullable: true
+      required: [price, execution_price_ton, next_min_bid, min_bid_value, max_bid_value]
+
+    DealTiming:
+      type: object
+      properties:
+        created_at:
+          type: string
+          format: date-time
+        valid_until:
+          type: string
+          format: date-time
+        start_time:
+          type: string
+          format: date-time
+          nullable: true
+        last_bid_time:
+          type: string
+          format: date-time
+          nullable: true
+      required: [created_at, valid_until, start_time, last_bid_time]
+
+    DealCapabilities:
+      type: object
+      properties:
+        purchase_available:
+          type: boolean
+        bid_available:
+          type: boolean
+        cancellation_available:
+          type: boolean
+      required:
+        - purchase_available
+        - bid_available
+        - cancellation_available
+
+    MarketRecordBase:
+      type: object
+      properties:
+        address:
+          $ref: '#/components/schemas/AddressObject'
+        participants:
+          $ref: '#/components/schemas/MarketParticipants'
+        domain_names:
+          type: array
+          items:
+            type: string
+        last_updated_at:
+          type: string
+          format: date-time
+      required:
+        - address
+        - participants
+        - domain_names
+        - last_updated_at
+
+    Deal:
+      allOf:
+        - $ref: '#/components/schemas/MarketRecordBase'
+        - type: object
+          properties:
+            type:
+              $ref: '#/components/schemas/DealType'
+            state:
+              $ref: '#/components/schemas/DealState'
+            marketplace:
+              type: object
+              properties:
+                address:
+                  $ref: '#/components/schemas/AddressObject'
+                name:
+                  type: string
+              required: [address, name]
+            pricing:
+              $ref: '#/components/schemas/DealPricing'
+            timing:
+              $ref: '#/components/schemas/DealTiming'
+            capabilities:
+              $ref: '#/components/schemas/DealCapabilities'
+          required:
+            - type
+            - state
+            - marketplace
+            - pricing
+            - timing
+            - capabilities
+
+    OfferPricing:
+      type: object
+      properties:
+        price:
+          $ref: '#/components/schemas/Money'
+      required: [price]
+
+    OfferTiming:
+      type: object
+      properties:
+        created_at:
+          type: string
+          format: date-time
+          nullable: true
+        valid_until:
+          type: string
+          format: date-time
+      required: [created_at, valid_until]
+
+    OfferCapabilities:
+      type: object
+      properties:
+        sale_available:
+          type: boolean
+        cancellation_available:
+          type: boolean
+      required:
+        - sale_available
+        - cancellation_available
+
+    OfferContractBase:
+      allOf:
+        - $ref: '#/components/schemas/MarketRecordBase'
+        - type: object
+          properties:
+            state:
+              $ref: '#/components/schemas/OfferState'
+            pricing:
+              $ref: '#/components/schemas/OfferPricing'
+            timing:
+              $ref: '#/components/schemas/OfferTiming'
+            capabilities:
+              $ref: '#/components/schemas/OfferCapabilities'
+          required:
+            - state
+            - pricing
+            - timing
+            - capabilities
+
+    PurchaseOfferContract:
+      allOf:
+        - $ref: '#/components/schemas/OfferContractBase'
+        - type: object
+          properties:
+            offer_type:
+              type: string
+              enum: [purchase_offer]
+          required: [offer_type]
+
+    MultipleOfferContract:
+      allOf:
+        - $ref: '#/components/schemas/OfferContractBase'
+        - type: object
+          properties:
+            offer_type:
+              type: string
+              enum: [multiple_offer]
+          required: [offer_type]
+
+    Offer:
+      oneOf:
+        - $ref: '#/components/schemas/PurchaseOfferContract'
+        - $ref: '#/components/schemas/MultipleOfferContract'
+      discriminator:
+        propertyName: offer_type
+
+    TransactionActors:
+      type: object
+      properties:
+        seller_address:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/AddressObject'
+          nullable: true
+        buyer_address:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/AddressObject'
+          nullable: true
+        bidder_address:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/AddressObject'
+          nullable: true
+        prev_owner_address:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/AddressObject'
+          nullable: true
+        new_owner_address:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/AddressObject'
+          nullable: true
+      required:
+        - seller_address
+        - buyer_address
+        - bidder_address
+        - prev_owner_address
+        - new_owner_address
+
+    Transaction:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [transaction]
+        tx_hash:
+          type: string
+        lt:
+          type: string
+        block_ref:
+          type: string
+          nullable: true
+        timestamp:
+          type: string
+          format: date-time
+        action_type:
+          $ref: '#/components/schemas/DomainActionType'
+        domain_name:
+          type: string
+          nullable: true
+        deal_address:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/AddressObject'
+          nullable: true
+        price:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          nullable: true
+        is_webdom:
+          type: boolean
+        actors:
+          $ref: '#/components/schemas/TransactionActors'
+        other_info:
+          $ref: '#/components/schemas/TransactionOtherInfo'
+      required:
+        - type
+        - tx_hash
+        - lt
+        - block_ref
+        - timestamp
+        - action_type
+        - domain_name
+        - deal_address
+        - price
+        - is_webdom
+        - actors
+        - other_info
+
+    TransactionOtherInfo:
+      type: object
+      additionalProperties: false
+      properties:
+        sale_type:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/DealType'
+          nullable: true
+        marketplace_address:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/AddressObject'
+          nullable: true
+        marketplace_name:
+          type: string
+          nullable: true
+        domain_names:
+          type: array
+          items:
+            type: string
+        previous_price:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          nullable: true
+        next_price:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          nullable: true
+        next_min_bid:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          nullable: true
+        expiration_at:
+          type: string
+          format: date-time
+          nullable: true
+        comment:
+          type: string
+          nullable: true
+
+    Bid:
+      type: object
+      properties:
+        tx_hash:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        auction_address:
+          $ref: '#/components/schemas/AddressObject'
+        bidder_address:
+          $ref: '#/components/schemas/AddressObject'
+        bid_value:
+          $ref: '#/components/schemas/Money'
+        domains_list:
+          type: array
+          items:
+            type: string
+      required:
+        - tx_hash
+        - timestamp
+        - auction_address
+        - bidder_address
+        - bid_value
+        - domains_list
+
+
+    User:
+      type: object
+      properties:
+        address:
+          $ref: '#/components/schemas/AddressObject'
+        nickname:
+          type: string
+          nullable: true
+        avatar_url:
+          type: string
+          nullable: true
+        link:
+          type: string
+          nullable: true
+        last_linked_domain:
+          type: string
+          nullable: true
+        stats:
+          $ref: '#/components/schemas/UserSearchStats'
+      required: [address, nickname, avatar_url, link, last_linked_domain, stats]
+
+    UserProfile:
+      type: object
+      description: |
+        Public user profile payload.
+        Viewer-dependent fields are resolved relative to the authenticated caller when bearer auth is provided.
+        For unauthenticated requests:
+        - `viewer_context.is_owner = false`
+        - `viewer_context.is_watching = false`
+        - `subscription = null`
+      properties:
+        address:
+          $ref: '#/components/schemas/AddressObject'
+        profile:
+          $ref: '#/components/schemas/UserProfileIdentity'
+        summary:
+          $ref: '#/components/schemas/UserProfileSummary'
+        watchlist_hidden:
+          type: boolean
+        stats_by_zone:
+          $ref: '#/components/schemas/UserProfileStatsByZone'
+        viewer_context:
+          $ref: '#/components/schemas/UserProfileViewerContext'
+        subscription:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/UserSubscription'
+          nullable: true
+          description: Always present in the response. `null` when unavailable or not applicable.
+      required:
+        - address
+        - profile
+        - summary
+        - watchlist_hidden
+        - stats_by_zone
+        - viewer_context
+        - subscription
+
+    UserProfileIdentity:
+      type: object
+      properties:
+        link:
+          type: string
+          nullable: true
+        nickname:
+          type: string
+          nullable: true
+        avatar_url:
+          type: string
+          nullable: true
+        last_linked_domain:
+          type: string
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+      required: [link, nickname, avatar_url, last_linked_domain, created_at]
+
+    UserProfileSummary:
+      type: object
+      properties:
+        domains_count_total:
+          type: integer
+        domains_count_ton:
+          type: integer
+        domains_count_tme:
+          type: integer
+        domains_on_sale_count:
+          type: integer
+        domains_on_auction_count:
+          type: integer
+        estimated_value_ton:
+          type: number
+          nullable: true
+        sales_count:
+          type: integer
+        sales_volume_ton:
+          type: number
+        primary_purchases_count:
+          type: integer
+        primary_purchases_volume_ton:
+          type: number
+        secondary_purchases_count:
+          type: integer
+        secondary_purchases_volume_ton:
+          type: number
+        total_purchases_count:
+          type: integer
+        total_purchases_volume_ton:
+          type: number
+        most_expensive_purchase:
+          $ref: '#/components/schemas/UserTopDeal'
+        most_expensive_sale:
+          $ref: '#/components/schemas/UserTopDeal'
+        rankings:
+          $ref: '#/components/schemas/UserProfileRankings'
+      required:
+        - domains_count_total
+        - domains_count_ton
+        - domains_count_tme
+        - domains_on_sale_count
+        - domains_on_auction_count
+        - estimated_value_ton
+        - sales_count
+        - sales_volume_ton
+        - primary_purchases_count
+        - primary_purchases_volume_ton
+        - secondary_purchases_count
+        - secondary_purchases_volume_ton
+        - total_purchases_count
+        - total_purchases_volume_ton
+        - most_expensive_purchase
+        - most_expensive_sale
+        - rankings
+
+    UserTopDeal:
+      type: object
+      nullable: true
+      properties:
+        domain_name:
+          type: string
+        price_ton:
+          type: number
+        tx_hash:
+          type: string
+      required: [domain_name, price_ton, tx_hash]
+
+    UserProfileRankings:
+      type: object
+      properties:
+        domains_count:
+          type: integer
+          nullable: true
+        sales_count:
+          type: integer
+          nullable: true
+        sales_volume:
+          type: integer
+          nullable: true
+        primary_purchases_count:
+          type: integer
+          nullable: true
+        primary_purchases_volume:
+          type: integer
+          nullable: true
+        secondary_purchases_count:
+          type: integer
+          nullable: true
+        secondary_purchases_volume:
+          type: integer
+          nullable: true
+        total_purchases_volume:
+          type: integer
+          nullable: true
+      required:
+        - domains_count
+        - sales_count
+        - sales_volume
+        - primary_purchases_count
+        - primary_purchases_volume
+        - secondary_purchases_count
+        - secondary_purchases_volume
+        - total_purchases_volume
+
+    UserProfileStatsByZone:
+      type: object
+      description: |
+        Zone mapping is fixed and mirrors the persisted `UserStats` keys:
+        - `all` <- `total`
+        - `ton` <- `domains`
+        - `tme` <- `usernames`
+      properties:
+        all:
+          $ref: '#/components/schemas/UserZoneStats'
+        ton:
+          $ref: '#/components/schemas/UserZoneStats'
+        tme:
+          $ref: '#/components/schemas/UserZoneStats'
+      required: [all, ton, tme]
+
+    UserZoneStats:
+      type: object
+      properties:
+        domains_count:
+          type: integer
+        domains_count_by_length:
+          type: object
+          additionalProperties:
+            type: integer
+        sales_count:
+          type: integer
+        sales_volume_ton:
+          type: number
+        primary_purchases_count:
+          type: integer
+        primary_purchases_volume_ton:
+          type: number
+        secondary_purchases_count:
+          type: integer
+        secondary_purchases_volume_ton:
+          type: number
+        total_purchases_count:
+          type: integer
+        total_purchases_volume_ton:
+          type: number
+        estimated_value_ton:
+          type: number
+          nullable: true
+        most_expensive_purchase:
+          $ref: '#/components/schemas/UserTopDeal'
+        most_expensive_sale:
+          $ref: '#/components/schemas/UserTopDeal'
+      required:
+        - domains_count
+        - domains_count_by_length
+        - sales_count
+        - sales_volume_ton
+        - primary_purchases_count
+        - primary_purchases_volume_ton
+        - secondary_purchases_count
+        - secondary_purchases_volume_ton
+        - total_purchases_count
+        - total_purchases_volume_ton
+        - estimated_value_ton
+        - most_expensive_purchase
+        - most_expensive_sale
+
+    UserProfileViewerContext:
+      type: object
+      properties:
+        is_owner:
+          type: boolean
+        is_watching:
+          type: boolean
+      required: [is_owner, is_watching]
+
+    UserSubscription:
+      type: object
+      properties:
+        level:
+          type: string
+          enum: [free, premium, nft]
+        is_active:
+          type: boolean
+        end_at:
+          type: string
+          format: date-time
+          nullable: true
+      required: [level, is_active, end_at]
+
+    UserSearchStats:
+      type: object
+      additionalProperties: false
+      properties:
+        domains_count:
+          type: integer
+        sales_count:
+          type: integer
+        primary_purchases_count:
+          type: integer
+        secondary_purchases_count:
+          type: integer
+        total_purchases_count:
+          type: integer
+        primary_purchase_volume:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          nullable: true
+        secondary_purchase_volume:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          nullable: true
+        total_purchase_volume:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          nullable: true
+        total_sale_volume:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          nullable: true
+      required:
+        - domains_count
+        - sales_count
+        - primary_purchases_count
+        - secondary_purchases_count
+        - total_purchases_count
+        - primary_purchase_volume
+        - secondary_purchase_volume
+        - total_purchase_volume
+        - total_sale_volume
+
+    MyOffers:
+      type: object
+      properties:
+        incoming:
+          type: array
+          items:
+            $ref: '#/components/schemas/Offer'
+        outgoing:
+          type: array
+          items:
+            $ref: '#/components/schemas/Offer'
+        generated_at:
+          type: string
+          format: date-time
+      required: [incoming, outgoing, generated_at]
+
+    MarketplaceDeployConfig:
+      type: object
+      properties:
+        alias:
+          type: string
+        deploy_type:
+          type: string
+        deploy_fee:
+          $ref: '#/components/schemas/Money'
+        code_hash:
+          type: string
+        deploy_function_code_hash:
+          type: string
+        min_price:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          nullable: true
+        min_price_usdt:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          nullable: true
+        min_price_web3:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          nullable: true
+        commission_factor:
+          type: number
+          format: double
+          nullable: true
+        commission_factor_usdt:
+          type: number
+          format: double
+          nullable: true
+        commission_factor_web3:
+          type: number
+          format: double
+          nullable: true
+        max_commission:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          nullable: true
+        max_commission_usdt:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          nullable: true
+        max_commission_web3:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          nullable: true
+        completion_commission:
+          type: object
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          nullable: true
+        min_duration:
+          type: integer
+          nullable: true
+        min_duration_usdt:
+          type: integer
+          nullable: true
+        min_duration_web3:
+          type: integer
+          nullable: true
+        min_time_increment:
+          type: integer
+          nullable: true
+        min_time_increment_usdt:
+          type: integer
+          nullable: true
+        min_time_increment_web3:
+          type: integer
+          nullable: true
+      required:
+        - alias
+        - deploy_type
+        - deploy_fee
+        - code_hash
+        - deploy_function_code_hash
+
+    MarketplaceConfig:
+      type: object
+      properties:
+        address:
+          $ref: '#/components/schemas/AddressObject'
+        name:
+          type: string
+        deploy_configs:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/MarketplaceDeployConfig'
+        last_updated_at:
+          type: string
+          format: date-time
+      required:
+        - address
+        - name
+        - deploy_configs
+        - last_updated_at
+
+    DomainStatusAnalytics:
+      type: object
+      properties:
+        on_sale:
+          type: integer
+        on_auction:
+          type: integer
+        not_for_sale:
+          type: integer
+        expiring_in_7_days:
+          type: integer
+        expiring_in_1_day:
+          type: integer
+        expired:
+          type: integer
+      required:
+        - on_sale
+        - on_auction
+        - not_for_sale
+        - expiring_in_7_days
+        - expiring_in_1_day
+        - expired
+
+    MarketOverview:
+      type: object
+      properties:
+        domains_count:
+          type: integer
+        domains_owners:
+          type: integer
+        domains_on_sale_count:
+          type: integer
+        domains_statuses:
+          $ref: '#/components/schemas/DomainStatusAnalytics'
+        snapshot_updated_at:
+          type: string
+          format: date-time
+      required:
+        - domains_count
+        - domains_owners
+        - domains_on_sale_count
+        - domains_statuses
+        - snapshot_updated_at
+
+    DomainLengthAnalyticsEntry:
+      type: object
+      properties:
+        total_count:
+          type: integer
+        on_sale_count:
+          type: integer
+        floor_price_ton:
+          type: number
+          format: double
+        average_price_ton:
+          type: number
+          format: double
+          nullable: true
+      required:
+        - total_count
+        - on_sale_count
+        - floor_price_ton
+
+    SalesHistoryPoint:
+      type: object
+      properties:
+        date:
+          type: string
+          format: date
+        count:
+          type: integer
+        volume_ton:
+          $ref: '#/components/schemas/Money'
+        volume_usdt:
+          $ref: '#/components/schemas/Money'
+        volume_web3:
+          $ref: '#/components/schemas/Money'
+      required: [date, count, volume_ton, volume_usdt, volume_web3]
+
+    CurrencyCountTotals:
+      type: object
+      properties:
+        TON:
+          type: integer
+        USDT:
+          type: integer
+        WEB3:
+          type: integer
+      required: [TON, USDT, WEB3]
+
+    CurrencyAmountTotals:
+      type: object
+      properties:
+        TON:
+          $ref: '#/components/schemas/Money'
+        USDT:
+          $ref: '#/components/schemas/Money'
+        WEB3:
+          $ref: '#/components/schemas/Money'
+      required: [TON, USDT, WEB3]
+
+    MarketCharts:
+      type: object
+      properties:
+        domains_length:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/DomainLengthAnalyticsEntry'
+        sales_history:
+          type: object
+          properties:
+            TON:
+              type: array
+              items:
+                $ref: '#/components/schemas/SalesHistoryPoint'
+            USDT:
+              type: array
+              items:
+                $ref: '#/components/schemas/SalesHistoryPoint'
+            WEB3:
+              type: array
+              items:
+                $ref: '#/components/schemas/SalesHistoryPoint'
+          required: [TON, USDT, WEB3]
+        mints_history:
+          type: object
+          properties:
+            TON:
+              type: array
+              items:
+                $ref: '#/components/schemas/SalesHistoryPoint'
+            USDT:
+              type: array
+              items:
+                $ref: '#/components/schemas/SalesHistoryPoint'
+            WEB3:
+              type: array
+              items:
+                $ref: '#/components/schemas/SalesHistoryPoint'
+          required: [TON, USDT, WEB3]
+        primary_sales_volume:
+          $ref: '#/components/schemas/CurrencyAmountTotals'
+        primary_sales_count:
+          $ref: '#/components/schemas/CurrencyCountTotals'
+        secondary_sales_volume:
+          $ref: '#/components/schemas/CurrencyAmountTotals'
+        secondary_sales_count:
+          $ref: '#/components/schemas/CurrencyCountTotals'
+        total_sales_volume:
+          $ref: '#/components/schemas/CurrencyAmountTotals'
+        total_sales_count:
+          $ref: '#/components/schemas/CurrencyCountTotals'
+        sales_volume_in_7_days:
+          $ref: '#/components/schemas/CurrencyAmountTotals'
+        sales_count_in_7_days:
+          $ref: '#/components/schemas/CurrencyCountTotals'
+        sales_volume_in_30_days:
+          $ref: '#/components/schemas/CurrencyAmountTotals'
+        sales_count_in_30_days:
+          $ref: '#/components/schemas/CurrencyCountTotals'
+        sales_volume_in_60_days:
+          $ref: '#/components/schemas/CurrencyAmountTotals'
+        sales_count_in_60_days:
+          $ref: '#/components/schemas/CurrencyCountTotals'
+        sales_volume_in_90_days:
+          $ref: '#/components/schemas/CurrencyAmountTotals'
+        sales_count_in_90_days:
+          $ref: '#/components/schemas/CurrencyCountTotals'
+        sales_volume_in_1_year:
+          $ref: '#/components/schemas/CurrencyAmountTotals'
+        sales_count_in_1_year:
+          $ref: '#/components/schemas/CurrencyCountTotals'
+        mints_volume_in_7_days:
+          $ref: '#/components/schemas/CurrencyAmountTotals'
+        mints_count_in_7_days:
+          $ref: '#/components/schemas/CurrencyCountTotals'
+        mints_volume_in_30_days:
+          $ref: '#/components/schemas/CurrencyAmountTotals'
+        mints_count_in_30_days:
+          $ref: '#/components/schemas/CurrencyCountTotals'
+        mints_volume_in_60_days:
+          $ref: '#/components/schemas/CurrencyAmountTotals'
+        mints_count_in_60_days:
+          $ref: '#/components/schemas/CurrencyCountTotals'
+        mints_volume_in_90_days:
+          $ref: '#/components/schemas/CurrencyAmountTotals'
+        mints_count_in_90_days:
+          $ref: '#/components/schemas/CurrencyCountTotals'
+        mints_volume_in_1_year:
+          $ref: '#/components/schemas/CurrencyAmountTotals'
+        mints_count_in_1_year:
+          $ref: '#/components/schemas/CurrencyCountTotals'
+        snapshot_updated_at:
+          type: string
+          format: date-time
+      required:
+        - domains_length
+        - sales_history
+        - mints_history
+        - primary_sales_volume
+        - primary_sales_count
+        - secondary_sales_volume
+        - secondary_sales_count
+        - total_sales_volume
+        - total_sales_count
+        - sales_volume_in_7_days
+        - sales_count_in_7_days
+        - sales_volume_in_30_days
+        - sales_count_in_30_days
+        - sales_volume_in_60_days
+        - sales_count_in_60_days
+        - sales_volume_in_90_days
+        - sales_count_in_90_days
+        - sales_volume_in_1_year
+        - sales_count_in_1_year
+        - mints_volume_in_7_days
+        - mints_count_in_7_days
+        - mints_volume_in_30_days
+        - mints_count_in_30_days
+        - mints_volume_in_60_days
+        - mints_count_in_60_days
+        - mints_volume_in_90_days
+        - mints_count_in_90_days
+        - mints_volume_in_1_year
+        - mints_count_in_1_year
+        - snapshot_updated_at
+
+    TopSaleEntry:
+      type: object
+      properties:
+        domain_name:
+          type: string
+        price_native:
+          $ref: '#/components/schemas/Money'
+        price_ton_normalized:
+          type: string
+          description: Exact normalized TON value in minor units.
+        price_usdt_normalized:
+          type: string
+          nullable: true
+          description: Exact normalized USDT value in minor units.
+        price_web3_normalized:
+          type: string
+          nullable: true
+          description: Exact normalized WEB3 value in minor units.
+        currency:
+          $ref: '#/components/schemas/CurrencyCode'
+        buyer_address:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/AddressObject'
+          nullable: true
+        buyer_nickname:
+          type: string
+          nullable: true
+        seller_address:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/AddressObject'
+          nullable: true
+        seller_nickname:
+          type: string
+          nullable: true
+        tx_hash:
+          type: string
+        tx_timestamp:
+          type: string
+          format: date-time
+      required:
+        - domain_name
+        - price_native
+        - price_ton_normalized
+        - price_usdt_normalized
+        - price_web3_normalized
+        - currency
+        - buyer_address
+        - buyer_nickname
+        - seller_address
+        - seller_nickname
+        - tx_hash
+        - tx_timestamp
+
+    UserRankingEntry:
+      type: object
+      properties:
+        user:
+          $ref: '#/components/schemas/User'
+        rating_value:
+          type: number
+      required: [user, rating_value]
+
+    JettonPrices:
+      type: object
+      properties:
+        usdt_price_ton:
+          type: number
+          format: float
+        web3_price_ton:
+          type: number
+          format: float
+        source_timestamp:
+          type: string
+          format: date-time
+          description: Timestamp of the upstream price-source snapshot used to derive these values.
+        generated_at:
+          type: string
+          format: date-time
+          description: Timestamp when this response payload was generated.
+      required: [usdt_price_ton, web3_price_ton, source_timestamp, generated_at]
+
+    ResolveResult:
+      type: object
+      properties:
+        resolved_wallet_address:
+          type: string
+          allOf:
+            - $ref: '#/components/schemas/AddressObject'
+          nullable: true
+          description: TON wallet address in user-friendly format. `null` when the domain exists but no linked wallet or wallet DNS record is available.
+        last_updated_at:
+          type: string
+          format: date-time
+      required: [resolved_wallet_address, last_updated_at]
+
+    BackResolveResult:
+      type: object
+      properties:
+        domain_name:
+          type: string
+          nullable: true
+          description: Domain name resolved from the wallet address. `null` when no reverse mapping is found.
+        last_updated_at:
+          type: string
+          format: date-time
+          nullable: true
+      required: [domain_name, last_updated_at]
+
+    BaseEnvelope:
+      type: object
+      properties:
+        success:
+          type: boolean
+          enum: [true]
+        meta:
+          $ref: '#/components/schemas/Meta'
+      required: [success, meta]
+
+    DomainEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/BaseEnvelope'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/Domain'
+          required: [data]
+
+    DealEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/BaseEnvelope'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/Deal'
+          required: [data]
+
+    OfferEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/BaseEnvelope'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/Offer'
+          required: [data]
+
+    UserEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/BaseEnvelope'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/UserProfile'
+          required: [data]
+
+    UserListEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/BaseEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/User'
+              required: [items]
+            page_info:
+              $ref: '#/components/schemas/PageInfo'
+          required: [data, page_info]
+
+    MarketplaceConfigEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/BaseEnvelope'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/MarketplaceConfig'
+          required: [data]
+
+    MarketOverviewEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/BaseEnvelope'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/MarketOverview'
+          required: [data]
+
+    MarketChartsEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/BaseEnvelope'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/MarketCharts'
+          required: [data]
+
+    TopSaleListEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/BaseEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/TopSaleEntry'
+                offset:
+                  type: integer
+                limit:
+                  type: integer
+                total_results:
+                  type: integer
+                snapshot_updated_at:
+                  type: string
+                  format: date-time
+              required: [items, offset, limit, total_results, snapshot_updated_at]
+          required: [data]
+
+    UserRankingEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/BaseEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/UserRankingEntry'
+                generated_at:
+                  type: string
+                  format: date-time
+              required: [items, generated_at]
+          required: [data]
+
+    JettonPricesEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/BaseEnvelope'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/JettonPrices'
+          required: [data]
+
+    ResolveEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/BaseEnvelope'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/ResolveResult'
+          required: [data]
+
+    BackResolveEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/BaseEnvelope'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/BackResolveResult'
+          required: [data]
+
+    TonProofChallengeEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/BaseEnvelope'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/TonProofChallenge'
+          required: [data]
+
+    AgentApiTokenEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/BaseEnvelope'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/AgentApiToken'
+          required: [data]
+
+    TokenRevocationEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/BaseEnvelope'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/TokenRevocationResult'
+          required: [data]
+
+    DomainListEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/BaseEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Domain'
+              required: [items]
+            page_info:
+              $ref: '#/components/schemas/PageInfo'
+          required: [data, page_info]
+
+    DealListEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/BaseEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Deal'
+              required: [items]
+            page_info:
+              $ref: '#/components/schemas/PageInfo'
+          required: [data, page_info]
+
+    TransactionListEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/BaseEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Transaction'
+              required: [items]
+            page_info:
+              $ref: '#/components/schemas/PageInfo'
+          required: [data, page_info]
+
+    BidListEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/BaseEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/Bid'
+              required: [items]
+            page_info:
+              $ref: '#/components/schemas/PageInfo'
+          required: [data, page_info]
+
+
+    BestOfferEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/BaseEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                domain_name:
+                  type: string
+                offer:
+                  type: object
+                  allOf:
+                    - $ref: '#/components/schemas/BestOfferSummary'
+                  nullable: true
+                  description: Best active offer for the domain. `null` when the domain exists but has no active offers.
+              required: [domain_name, offer]
+          required: [data]
+
+    MyOffersEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/BaseEnvelope'
+        - type: object
+          properties:
+            data:
+              $ref: '#/components/schemas/MyOffers'
+          required: [data]

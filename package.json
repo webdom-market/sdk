@@ -1,0 +1,113 @@
+{
+    "name": "@webdom/sdk",
+    "version": "0.1.0",
+    "description": "TypeScript SDK for Webdom agent API and contract transaction builders",
+    "license": "Apache-2.0",
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/webdom-market/webdom-sdk.git"
+    },
+    "homepage": "https://github.com/webdom-market/webdom-sdk#readme",
+    "bugs": {
+        "url": "https://github.com/webdom-market/webdom-sdk/issues"
+    },
+    "keywords": [
+        "webdom",
+        "ton",
+        "sdk",
+        "cli",
+        "marketplace",
+        "domains"
+    ],
+    "engines": {
+        "node": ">=18"
+    },
+    "type": "module",
+    "main": "./dist/index.cjs",
+    "module": "./dist/index.js",
+    "types": "./dist/index.d.ts",
+    "publishConfig": {
+        "access": "public",
+        "registry": "https://registry.npmjs.org/"
+    },
+    "bin": {
+        "webdom": "./dist/cli.js"
+    },
+    "exports": {
+        ".": {
+            "types": "./dist/index.d.ts",
+            "import": "./dist/index.js",
+            "require": "./dist/index.cjs"
+        },
+        "./api": {
+            "types": "./dist/api/index.d.ts",
+            "import": "./dist/api/index.js",
+            "require": "./dist/api/index.cjs"
+        },
+        "./auth": {
+            "types": "./dist/auth/index.d.ts",
+            "import": "./dist/auth/index.js",
+            "require": "./dist/auth/index.cjs"
+        },
+        "./tx": {
+            "types": "./dist/tx/index.d.ts",
+            "import": "./dist/tx/index.js",
+            "require": "./dist/tx/index.cjs"
+        },
+        "./contracts": {
+            "types": "./dist/contracts/index.d.ts",
+            "import": "./dist/contracts/index.js",
+            "require": "./dist/contracts/index.cjs"
+        },
+        "./types": {
+            "types": "./dist/types/index.d.ts",
+            "import": "./dist/types/index.js",
+            "require": "./dist/types/index.cjs"
+        },
+        "./cli": {
+            "types": "./dist/cli.d.ts",
+            "import": "./dist/cli.js",
+            "require": "./dist/cli.cjs"
+        }
+    },
+    "files": [
+        "dist"
+    ],
+    "scripts": {
+        "build": "tsup",
+        "check": "tsc --noEmit",
+        "lint": "eslint .",
+        "lint:fix": "eslint . --fix",
+        "openapi:check": "node scripts/generate-agent-api.mjs --check",
+        "openapi:generate": "node scripts/generate-agent-api.mjs",
+        "openapi:lint": "redocly lint openapi/agent-api-openapi.yaml",
+        "openapi:sync": "node scripts/sync-openapi-snapshot.mjs --copy",
+        "openapi:sync-check": "node scripts/sync-openapi-snapshot.mjs --check",
+        "openapi:source-verify": "npm run openapi:lint && npm run openapi:check && npm run openapi:sync-check",
+        "openapi:verify": "npm run openapi:lint && npm run openapi:check",
+        "pack:dry-run": "npm pack --dry-run",
+        "pack:verify": "node scripts/check-package-consumer.mjs",
+        "prepublishOnly": "npm run openapi:source-verify && npm run lint && npm run check && npm test && npm run build && npm run pack:verify",
+        "test": "vitest run"
+    },
+    "dependencies": {
+        "@types/node": "22.10.1",
+        "@ton/core": "0.61.0",
+        "@ton/crypto": "3.3.0",
+        "@ton/ton": "15.3.1",
+        "buffer": "6.0.3"
+    },
+    "devDependencies": {
+        "@redocly/cli": "^2.24.1",
+        "@stylistic/eslint-plugin": "^5.10.0",
+        "eslint": "^10.1.0",
+        "eslint-plugin-jsonc": "^3.1.2",
+        "jsonc-eslint-parser": "^3.1.0",
+        "openapi-typescript": "^7.13.0",
+        "tsup": "8.3.5",
+        "typescript": "5.8.2",
+        "typescript-eslint": "^8.57.1",
+        "vitest": "3.1.1",
+        "yaml": "^2.8.3"
+    }
+}
