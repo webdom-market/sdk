@@ -38,6 +38,7 @@ console.log(details.owner);
 - `sdk.api`
 - `sdk.raw`
 - `sdk.auth`
+- `sdk.balances`
 - `sdk.tx`
 - `sdk.context`
 
@@ -211,7 +212,11 @@ Workflow examples:
 ```bash
 webdom find-domain --query gold --limit 5
 webdom get-domain --domain example.ton
+webdom get-wallet-balances --address UQ...
 webdom build-purchase-tx --sale-address EQ... --price 1500000000
+webdom build-sale-tx --user-address UQ... --domain-address EQ... --domain-name example.ton --currency USDT --price 1000000000 --valid-until 1767225600
+webdom build-offer-tx --domain-name example.ton --seller-address UQ... --currency TON --price 1000000000 --valid-until 1767225600
+webdom build-auction-tx --user-address UQ... --domain-address EQ... --domain-name example.ton --currency TON --start-time 1766620800 --end-time 1767225600 --min-bid-value 1000000000 --max-bid-value 100000000000 --min-bid-increment 5 --time-increment 300
 ```
 
 Low-level examples:

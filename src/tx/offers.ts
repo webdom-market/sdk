@@ -12,6 +12,8 @@ import {
 } from '../contracts';
 import type { TxContext } from './shared';
 import {
+    getMarketplaceDeployConfig,
+    parseRequiredBigInt,
     normalizeJettonSymbol,
     parseAddress,
     prepareSingle,
@@ -20,6 +22,30 @@ import {
     resolveJettonWalletAddressFromOffer
 } from './shared';
 
+async function resolveOfferDeployAmounts(
+    context: TxContext,
+    alias: 'ton_simple_offer' | 'jetton_simple_offer',
+    deployFee?: bigint,
+    commission?: bigint
+) {
+    if (deployFee !== undefined && commission !== undefined) {
+        return { deployFee, commission };
+    }
+
+    const deployConfig = await getMarketplaceDeployConfig(context, alias);
+
+    return {
+        deployFee: deployFee ?? parseRequiredBigInt(
+            deployConfig.deploy_fee?.amount,
+            `Marketplace config for "${alias}" does not provide deploy_fee`
+        ),
+        commission: commission ?? parseRequiredBigInt(
+            deployConfig.completion_commission?.amount,
+            `Marketplace config for "${alias}" does not provide completion_commission`
+        )
+    };
+}
+
 export function createOfferTransactions(context: TxContext) {
     return {
         async deployTonSimple(args: {
@@ -27,13 +53,13 @@ export function createOfferTransactions(context: TxContext) {
             domainName: string;
             deployFee?: bigint;
             price: bigint;
-            commission: bigint;
+            commission?: bigint;
             validUntil: number;
             discountCell?: Cell | null;
             notifySeller?: boolean;
             queryId?: number;
         }) {
-            const deployFee = await resolveDeployFee(context, 'ton_simple_offer', args.deployFee);
+            const { deployFee, commission } = await resolveOfferDeployAmounts(context, 'ton_simple_offer', args.deployFee, args.commission);
             return prepareSingle(
                 'DeployTonSimpleOffer',
                 Marketplace.getDeployTonSimpleOfferMessageInfo(
@@ -41,7 +67,7 @@ export function createOfferTransactions(context: TxContext) {
                     args.domainName,
                     deployFee,
                     args.price,
-                    args.commission,
+                    commission,
                     args.validUntil,
                     args.discountCell ?? null,
                     args.notifySeller ?? true,
@@ -63,13 +89,13 @@ export function createOfferTransactions(context: TxContext) {
             deployFee?: bigint;
             sellerAddress: AddressLike;
             price: bigint;
-            commission: bigint;
+            commission?: bigint;
             validUntil: number;
             notifySeller: boolean;
             discountCell?: Cell | null;
             queryId?: number;
         }) {
-            const deployFee = await resolveDeployFee(context, 'jetton_simple_offer', args.deployFee);
+            const { deployFee, commission } = await resolveOfferDeployAmounts(context, 'jetton_simple_offer', args.deployFee, args.commission);
             const jettonWalletAddress = await resolveJettonWalletAddress({
                 context,
                 userAddress: args.userAddress,
@@ -85,7 +111,7 @@ export function createOfferTransactions(context: TxContext) {
                     deployFee,
                     parseAddress(args.sellerAddress),
                     args.price,
-                    args.commission,
+                    commission,
                     args.validUntil,
                     args.notifySeller,
                     args.discountCell ?? null,

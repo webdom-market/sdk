@@ -236,6 +236,38 @@ Output:
 
 ## Workflow Reads
 
+### Get Wallet Balances
+
+```bash
+npx @webdom/sdk get-wallet-balances --address EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c --pretty
+```
+
+```json
+{
+  "owner_address": "EQAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAM9c",
+  "ton": {
+    "currency": "TON",
+    "amount": "5771138076252",
+    "amount_decimal": "5771.138076252",
+    "decimals": 9
+  },
+  "usdt": {
+    "currency": "USDT",
+    "amount": "1127274321",
+    "amount_decimal": "1127.274321",
+    "decimals": 6,
+    "jetton_wallet_address": "EQDDvpI0mkS3MrOXCJFc5PelbsWOm1fvDaFRW2ITx96vg2b2"
+  },
+  "web3": {
+    "currency": "WEB3",
+    "amount": "20641",
+    "amount_decimal": "20.641",
+    "decimals": 3,
+    "jetton_wallet_address": "EQASuHPKs8YBvsJa-pyo4edPh7X_e8-CpLX5z4vZrsa9OAwu"
+  }
+}
+```
+
 ### Find Sale Domains By Query
 
 ```bash
@@ -1136,6 +1168,99 @@ npx @webdom/sdk build-purchase-tx --sale-address EQCZrE2PauJVGz8d2Rh-0aoXDlJYr9l
     "contractAddress": "EQCZrE2PauJVGz8d2Rh-0aoXDlJYr9l6koX64pZDVJYogAuS"
   }
 }
+```
+
+### Build A Fixed-Price Sale Deployment Transaction
+
+List one domain for sale in TON, USDT, or WEB3 with the workflow CLI:
+
+```bash
+npx @webdom/sdk build-sale-tx \
+  --user-address UQA0WCBuWfrSYXpriHdDJEwugZIIfiZpsYZnc0Kz4OSLya4q \
+  --domain-address EQDUu6QDlo1F5exjcuEzUmt42petpjSt0MxpoE7R5cN5rR6F \
+  --domain-name testsiteston.ton \
+  --currency USDT \
+  --price 1000000000 \
+  --valid-until 1767225600 \
+  --pretty
+```
+
+Use `--currency TON` for TON listings or `--currency WEB3` for WEB3 listings.
+
+### Build A Purchase-Offer Deployment Transaction
+
+Create a purchase offer through the workflow CLI:
+
+```bash
+npx @webdom/sdk build-offer-tx \
+  --domain-name testsiteston.ton \
+  --seller-address UQA0WCBuWfrSYXpriHdDJEwugZIIfiZpsYZnc0Kz4OSLya4q \
+  --currency TON \
+  --price 1000000000 \
+  --valid-until 1767225600 \
+  --pretty
+```
+
+For USDT or WEB3 offers, also pass the buyer wallet:
+
+```bash
+npx @webdom/sdk build-offer-tx \
+  --domain-name testsiteston.ton \
+  --seller-address UQA0WCBuWfrSYXpriHdDJEwugZIIfiZpsYZnc0Kz4OSLya4q \
+  --user-address UQCovSj8c8Ik1I-RZt7dbIOEulYe-MfJ2SN5eMhxwfACvp7x \
+  --currency USDT \
+  --price 1000000000 \
+  --valid-until 1767225600 \
+  --pretty
+```
+
+If `--commission` is omitted, the CLI loads the completion commission from `marketplace.config`.
+
+### Build An Auction Deployment Transaction
+
+Start a one-domain auction through the workflow CLI:
+
+```bash
+npx @webdom/sdk build-auction-tx \
+  --user-address UQA0WCBuWfrSYXpriHdDJEwugZIIfiZpsYZnc0Kz4OSLya4q \
+  --domain-address EQDUu6QDlo1F5exjcuEzUmt42petpjSt0MxpoE7R5cN5rR6F \
+  --domain-name testsiteston.ton \
+  --currency TON \
+  --start-time 1766620800 \
+  --end-time 1767225600 \
+  --min-bid-value 1000000000 \
+  --max-bid-value 100000000000 \
+  --min-bid-increment 5 \
+  --time-increment 300 \
+  --pretty
+```
+
+### Build A Sale Cancellation Transaction
+
+Simple sale:
+
+```bash
+npx @webdom/sdk build-cancel-deal-tx --deal-type sale --deal-address EQCZrE2PauJVGz8d2Rh-0aoXDlJYr9l6koX64pZDVJYogAuS --pretty
+```
+
+Multiple sale:
+
+```bash
+npx @webdom/sdk build-cancel-deal-tx --deal-type sale --deal-address EQCZrE2PauJVGz8d2Rh-0aoXDlJYr9l6koX64pZDVJYogAuS --pretty
+```
+
+`build-cancel-deal-tx` detects the marketplace automatically and reads the number of domains from the deal.
+
+### Build An Offer Cancellation Transaction
+
+```bash
+npx @webdom/sdk build-cancel-deal-tx --deal-type offer --deal-address EQA-b0HZgkRYW13sRnsqqZYM95C5-ecmSW2aVYZvhJTwkDGl --pretty
+```
+
+### Build An Auction Cancellation Transaction
+
+```bash
+npx @webdom/sdk build-cancel-deal-tx --deal-type auction --deal-address EQA_eLGS7ScVSReLIkZF81F0V_u60YwMb_fUWpm1h-unHICo --pretty
 ```
 
 ### Send The Prepared Transaction Through `@ton/mcp@alpha`

@@ -2514,6 +2514,8 @@ components:
           type: object
           additionalProperties:
             $ref: '#/components/schemas/MarketplaceDeployConfig'
+        promotion_prices:
+          $ref: '#/components/schemas/MarketplacePromotionPrices'
         last_updated_at:
           type: string
           format: date-time
@@ -2521,7 +2523,32 @@ components:
         - address
         - name
         - deploy_configs
+        - promotion_prices
         - last_updated_at
+
+    MarketplacePromotionPrices:
+      type: object
+      properties:
+        move_up_price:
+          $ref: '#/components/schemas/Money'
+        period_prices:
+          type: object
+          additionalProperties:
+            $ref: '#/components/schemas/MarketplacePromotionPeriodPrices'
+      required:
+        - move_up_price
+        - period_prices
+
+    MarketplacePromotionPeriodPrices:
+      type: object
+      properties:
+        hot_price:
+          $ref: '#/components/schemas/Money'
+        colored_price:
+          $ref: '#/components/schemas/Money'
+      required:
+        - hot_price
+        - colored_price
 
     DomainStatusAnalytics:
       type: object

@@ -1,3 +1,5 @@
+import type { TonClient4 } from '@ton/ton';
+
 import {
     ADDRESS_PARAM,
     CURRENCIES,
@@ -16,6 +18,172 @@ import {
 } from '../constants';
 import { cloneParam, sdkCommand } from '../command-builder';
 import type { CliCommandDefinition } from '../types';
+import { parseAddress } from '../../tx/shared';
+
+type WorkflowInput = Record<string, unknown>;
+type WorkflowSdk = {
+    api: {
+        deals: {
+            get(args: { deal_address: string }): Promise<{
+                domain_names?: string[] | null;
+                marketplace?: {
+                    name?: string | null;
+                } | null;
+            }>;
+        };
+        offers: {
+            get(args: { offer_address: string }): Promise<{
+                pricing?: {
+                    price?: {
+                        amount?: string | null;
+                        currency?: string | null;
+                    } | null;
+                } | null;
+            }>;
+        };
+        marketplace: {
+            getConfig(): Promise<{
+                promotion_prices?: {
+                    move_up_price?: {
+                        amount?: string | null;
+                    } | null;
+                    period_prices?: Record<string, {
+                        hot_price?: {
+                            amount?: string | null;
+                        } | null;
+                        colored_price?: {
+                            amount?: string | null;
+                        } | null;
+                    }> | null;
+                } | null;
+            }>;
+        };
+    };
+    context: {
+        getTonClient(): TonClient4;
+    };
+};
+
+function requireString(input: WorkflowInput, key: string, commandName: string) {
+    const value = input[key];
+    if (typeof value !== 'string' || value.length === 0) {
+        throw new Error(`Missing required parameter "${key}" for command ${commandName}`);
+    }
+    return value;
+}
+
+function requireNumber(input: WorkflowInput, key: string, commandName: string) {
+    const value = input[key];
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+        throw new Error(`Missing required parameter "${key}" for command ${commandName}`);
+    }
+    return value;
+}
+
+function requireFraction(input: WorkflowInput, key: string, commandName: string) {
+    const value = requireNumber(input, key, commandName);
+    if (value < 0 || value > 1) {
+        throw new Error(`${key} must be a fraction between 0 and 1 for command ${commandName} (for example 0.05 for 5%)`);
+    }
+    return value;
+}
+
+function requireBigInt(input: WorkflowInput, key: string, commandName: string) {
+    const value = input[key];
+    if (typeof value !== 'bigint') {
+        throw new Error(`Missing required parameter "${key}" for command ${commandName}`);
+    }
+    return value;
+}
+
+function optionalNumber(input: WorkflowInput, key: string) {
+    const value = input[key];
+    return typeof value === 'number' && Number.isFinite(value) ? value : undefined;
+}
+
+function optionalBigInt(input: WorkflowInput, key: string) {
+    const value = input[key];
+    return typeof value === 'bigint' ? value : undefined;
+}
+
+function optionalBoolean(input: WorkflowInput, key: string) {
+    const value = input[key];
+    return typeof value === 'boolean' ? value : undefined;
+}
+
+function requireCurrency(input: WorkflowInput, key: string, commandName: string) {
+    const value = requireString(input, key, commandName);
+    if (!CURRENCIES.includes(value as typeof CURRENCIES[number])) {
+        throw new Error(`${key} must be one of: ${CURRENCIES.join(', ')}`);
+    }
+    return value as typeof CURRENCIES[number];
+}
+
+async function getDealMarketplaceName(sdk: WorkflowSdk, dealAddress: string) {
+    const deal = await sdk.api.deals.get({ deal_address: dealAddress });
+    const marketplaceName = deal.marketplace?.name?.trim().toLowerCase();
+
+    if (!marketplaceName) {
+        throw new Error(`Unable to determine marketplace for deal ${dealAddress}`);
+    }
+
+    return marketplaceName;
+}
+
+function isExternalMarketplace(marketplaceName: string) {
+    return marketplaceName !== 'webdom';
+}
+
+async function inferOfferCurrency(sdk: WorkflowSdk, offerAddress: string) {
+    const offer = await sdk.api.offers.get({ offer_address: offerAddress });
+    const currency = offer.pricing?.price?.currency;
+
+    if (!currency || !CURRENCIES.includes(currency as typeof CURRENCIES[number])) {
+        throw new Error(`Unable to determine offer currency for ${offerAddress}`);
+    }
+
+    return currency as typeof CURRENCIES[number];
+}
+
+async function getOfferPricing(sdk: WorkflowSdk, offerAddress: string) {
+    const offer = await sdk.api.offers.get({ offer_address: offerAddress });
+    const price = offer.pricing?.price;
+
+    if (!price || !price.currency || !CURRENCIES.includes(price.currency as typeof CURRENCIES[number]) || typeof price.amount !== 'string' || price.amount.length === 0) {
+        throw new Error(`Unable to determine offer pricing for ${offerAddress}`);
+    }
+
+    return {
+        currency: price.currency as typeof CURRENCIES[number],
+        amount: BigInt(price.amount)
+    };
+}
+
+async function inferGetgemsAuctionVersion(sdk: WorkflowSdk, auctionAddress: string) {
+    const tonClient = sdk.context.getTonClient();
+    const { last } = await tonClient.getLastBlock();
+    const address = parseAddress(auctionAddress);
+
+    try {
+        const result = await tonClient.runMethod(last.seqno, address, 'get_auction_data_v4', []);
+        if (result.exitCode !== 0) {
+            throw new Error(`get_auction_data_v4 exited with code ${result.exitCode}`);
+        }
+        return true;
+    } catch (v4Error) {
+        try {
+            const result = await tonClient.runMethod(last.seqno, address, 'get_auction_data', []);
+            if (result.exitCode !== 0) {
+                throw new Error(`get_auction_data exited with code ${result.exitCode}`);
+            }
+            return false;
+        } catch (legacyError) {
+            const v4Message = v4Error instanceof Error ? v4Error.message : String(v4Error);
+            const legacyMessage = legacyError instanceof Error ? legacyError.message : String(legacyError);
+            throw new Error(`Unable to determine getgems auction version for ${auctionAddress}: ${v4Message}; ${legacyMessage}`);
+        }
+    }
+}
 
 export const WORKFLOW_COMMANDS: CliCommandDefinition[] = [
     sdkCommand({
@@ -425,6 +593,51 @@ export const WORKFLOW_COMMANDS: CliCommandDefinition[] = [
         }
     }),
     sdkCommand({
+        name: 'get-wallet-balances',
+        layer: 'workflow',
+        summary: 'Get TON, USDT, and WEB3 balances.',
+        description: 'Read TON balance and the owner jetton balances for USDT and WEB3.',
+        aliases: ['wallet-balances', 'get-balances'],
+        params: [cloneParam(ADDRESS_PARAM, { required: true })],
+        examples: ['webdom get-wallet-balances --address UQ...'],
+        outputDescription: 'Wallet balances grouped by asset.',
+        outputSchema: OBJECT_OUTPUT_SCHEMA,
+        sdkPath: ['balances', 'getAll']
+    }),
+    sdkCommand({
+        name: 'get-ton-balance',
+        layer: 'workflow',
+        summary: 'Get TON balance.',
+        description: 'Read the TON balance for one wallet address.',
+        params: [cloneParam(ADDRESS_PARAM, { required: true })],
+        examples: ['webdom get-ton-balance --address UQ...'],
+        outputDescription: 'TON balance.',
+        outputSchema: OBJECT_OUTPUT_SCHEMA,
+        sdkPath: ['balances', 'getTon']
+    }),
+    sdkCommand({
+        name: 'get-usdt-balance',
+        layer: 'workflow',
+        summary: 'Get USDT jetton balance.',
+        description: 'Resolve the owner USDT jetton wallet and read its balance.',
+        params: [cloneParam(ADDRESS_PARAM, { required: true })],
+        examples: ['webdom get-usdt-balance --address UQ...'],
+        outputDescription: 'USDT balance.',
+        outputSchema: OBJECT_OUTPUT_SCHEMA,
+        sdkPath: ['balances', 'getUsdt']
+    }),
+    sdkCommand({
+        name: 'get-web3-balance',
+        layer: 'workflow',
+        summary: 'Get WEB3 jetton balance.',
+        description: 'Resolve the owner WEB3 jetton wallet and read its balance.',
+        params: [cloneParam(ADDRESS_PARAM, { required: true })],
+        examples: ['webdom get-web3-balance --address UQ...'],
+        outputDescription: 'WEB3 balance.',
+        outputSchema: OBJECT_OUTPUT_SCHEMA,
+        sdkPath: ['balances', 'getWeb3']
+    }),
+    sdkCommand({
         name: 'build-purchase-tx',
         layer: 'workflow',
         summary: 'Build a TON simple-sale purchase transaction.',
@@ -515,8 +728,7 @@ export const WORKFLOW_COMMANDS: CliCommandDefinition[] = [
             { name: 'domain_address', type: 'string', required: true, description: 'Domain contract address.' },
             { name: 'offer_address', type: 'string', required: true, description: 'Offer contract address.' },
             { name: 'user_address', type: 'string', required: true, description: 'Seller wallet address.' },
-            { name: 'query_id', type: 'number', description: 'Optional query id.' },
-            { name: 'is_tg_username', type: 'boolean', description: 'Whether the asset is a Telegram username.' }
+            { name: 'query_id', type: 'number', description: 'Optional query id.' }
         ],
         examples: ['webdom build-accept-offer-tx --domain-address EQ... --offer-address EQ... --user-address UQ...'],
         outputDescription: 'Prepared TonConnect transaction.',
@@ -527,8 +739,403 @@ export const WORKFLOW_COMMANDS: CliCommandDefinition[] = [
                 domainAddress: input.domain_address,
                 offerAddress: input.offer_address,
                 userAddress: input.user_address,
-                queryId: input.query_id,
-                isTgUsername: input.is_tg_username
+                queryId: input.query_id
+            };
+        }
+    }),
+    {
+        name: 'build-sale-tx',
+        layer: 'workflow',
+        summary: 'Build a fixed-price sale deployment transaction.',
+        description: 'Prepare a TonConnect-ready message for listing one domain for sale in TON, USDT, or WEB3.',
+        aliases: ['build-listing-tx'],
+        acceptsInput: 'object',
+        params: [
+            { name: 'user_address', type: 'string', required: true, description: 'Seller wallet address.' },
+            { name: 'domain_address', type: 'string', required: true, description: 'Domain contract address.' },
+            { name: 'domain_name', type: 'string', required: true, description: 'Domain name.' },
+            { name: 'currency', type: 'string', required: true, enum: CURRENCIES, description: 'Listing currency.' },
+            { name: 'price', type: 'bigint', required: true, description: 'Listing price in minor units for the selected currency.' },
+            { name: 'valid_until', type: 'number', required: true, description: 'Unix timestamp when the sale expires.' },
+            { name: 'auto_renew_cooldown', type: 'number', description: 'Optional auto-renew cooldown in seconds.' },
+            { name: 'auto_renew_iterations', type: 'number', description: 'Optional auto-renew iteration count.' },
+            { name: 'query_id', type: 'number', description: 'Optional query id.' }
+        ],
+        examples: [
+            'webdom build-sale-tx --user-address UQ... --domain-address EQ... --domain-name example.ton --currency TON --price 1000000000 --valid-until 1767225600',
+            'webdom build-sale-tx --user-address UQ... --domain-address EQ... --domain-name example.ton --currency USDT --price 1000000000 --valid-until 1767225600'
+        ],
+        outputDescription: 'Prepared TonConnect transaction.',
+        outputSchema: OBJECT_OUTPUT_SCHEMA,
+        async handler(sdk, rawInput) {
+            const input = rawInput as WorkflowInput;
+            const commandName = 'build-sale-tx';
+            const currency = requireCurrency(input, 'currency', commandName);
+            const commonArgs = {
+                userAddress: requireString(input, 'user_address', commandName),
+                domainAddress: requireString(input, 'domain_address', commandName),
+                domainName: requireString(input, 'domain_name', commandName),
+                price: requireBigInt(input, 'price', commandName),
+                validUntil: requireNumber(input, 'valid_until', commandName),
+                autoRenewCooldown: optionalNumber(input, 'auto_renew_cooldown'),
+                autoRenewIterations: optionalNumber(input, 'auto_renew_iterations'),
+                queryId: optionalNumber(input, 'query_id')
+            };
+
+            if (currency === 'TON') {
+                return await sdk.tx.sales.deployTonSimple(commonArgs);
+            }
+
+            return await sdk.tx.sales.deployJettonSimple({
+                ...commonArgs,
+                isWeb3: currency === 'WEB3'
+            });
+        }
+    },
+    {
+        name: 'build-offer-tx',
+        layer: 'workflow',
+        summary: 'Build a purchase-offer deployment transaction.',
+        description: 'Prepare a TonConnect-ready message for placing a purchase offer in TON, USDT, or WEB3.',
+        aliases: ['build-purchase-offer-tx'],
+        acceptsInput: 'object',
+        params: [
+            { name: 'domain_name', type: 'string', required: true, description: 'Domain name.' },
+            { name: 'seller_address', type: 'string', required: true, description: 'Current owner wallet address.' },
+            { name: 'currency', type: 'string', required: true, enum: CURRENCIES, description: 'Offer currency.' },
+            { name: 'price', type: 'bigint', required: true, description: 'Offer price in minor units for the selected currency.' },
+            { name: 'valid_until', type: 'number', required: true, description: 'Unix timestamp when the offer expires.' },
+            { name: 'user_address', type: 'string', description: 'Buyer wallet address. Required for USDT and WEB3 offers.' },
+            { name: 'jetton_wallet_address', type: 'string', description: 'Optional buyer jetton wallet address override.' },
+            { name: 'commission', type: 'bigint', description: 'Optional completion commission in nanotons/minor units. When omitted, marketplace config is used.' },
+            { name: 'notify_seller', type: 'boolean', description: 'Whether to notify the seller.' },
+            { name: 'query_id', type: 'number', description: 'Optional query id.' }
+        ],
+        examples: [
+            'webdom build-offer-tx --domain-name example.ton --seller-address UQ... --currency TON --price 1000000000 --valid-until 1767225600',
+            'webdom build-offer-tx --domain-name example.ton --seller-address UQ... --currency USDT --price 1000000000 --valid-until 1767225600 --user-address UQ...'
+        ],
+        outputDescription: 'Prepared TonConnect transaction.',
+        outputSchema: OBJECT_OUTPUT_SCHEMA,
+        async handler(sdk, rawInput) {
+            const input = rawInput as WorkflowInput;
+            const commandName = 'build-offer-tx';
+            const currency = requireCurrency(input, 'currency', commandName);
+            const commonArgs = {
+                domainName: requireString(input, 'domain_name', commandName),
+                sellerAddress: requireString(input, 'seller_address', commandName),
+                price: requireBigInt(input, 'price', commandName),
+                validUntil: requireNumber(input, 'valid_until', commandName),
+                commission: optionalBigInt(input, 'commission'),
+                queryId: optionalNumber(input, 'query_id')
+            };
+
+            if (currency === 'TON') {
+                return await sdk.tx.offers.deployTonSimple({
+                    ...commonArgs,
+                    notifySeller: optionalBoolean(input, 'notify_seller')
+                });
+            }
+
+            const userAddress = requireString(input, 'user_address', commandName);
+            return await sdk.tx.offers.deployJettonSimple({
+                ...commonArgs,
+                userAddress,
+                jettonWalletAddress: input.jetton_wallet_address as string | undefined,
+                jettonSymbol: currency,
+                notifySeller: optionalBoolean(input, 'notify_seller') ?? true
+            });
+        }
+    },
+    {
+        name: 'build-auction-tx',
+        layer: 'workflow',
+        summary: 'Build an auction deployment transaction.',
+        description: 'Prepare a TonConnect-ready message for listing one domain on auction in TON, USDT, or WEB3.',
+        aliases: ['build-start-auction-tx'],
+        acceptsInput: 'object',
+        params: [
+            { name: 'user_address', type: 'string', required: true, description: 'Seller wallet address.' },
+            { name: 'domain_address', type: 'string', required: true, description: 'Domain contract address.' },
+            { name: 'domain_name', type: 'string', required: true, description: 'Domain name.' },
+            { name: 'currency', type: 'string', required: true, enum: CURRENCIES, description: 'Auction currency.' },
+            { name: 'start_time', type: 'number', required: true, description: 'Auction start time as a Unix timestamp.' },
+            { name: 'end_time', type: 'number', required: true, description: 'Auction end time as a Unix timestamp.' },
+            { name: 'min_bid_value', type: 'bigint', required: true, description: 'Minimum bid in minor units for the selected currency.' },
+            { name: 'max_bid_value', type: 'bigint', required: true, description: 'Maximum bid in minor units for the selected currency.' },
+            { name: 'min_bid_increment', type: 'number', required: true, description: 'Minimum bid increment percentage.' },
+            { name: 'time_increment', type: 'number', required: true, description: 'Time extension in seconds for late bids.' },
+            { name: 'is_deferred', type: 'boolean', description: 'Whether the auction is deferred.' },
+            { name: 'query_id', type: 'number', description: 'Optional query id.' }
+        ],
+        examples: [
+            'webdom build-auction-tx --user-address UQ... --domain-address EQ... --domain-name example.ton --currency TON --start-time 1766620800 --end-time 1767225600 --min-bid-value 1000000000 --max-bid-value 100000000000 --min-bid-increment 5 --time-increment 300',
+            'webdom build-auction-tx --user-address UQ... --domain-address EQ... --domain-name example.ton --currency USDT --start-time 1766620800 --end-time 1767225600 --min-bid-value 1000000 --max-bid-value 1000000000 --min-bid-increment 5 --time-increment 300'
+        ],
+        outputDescription: 'Prepared TonConnect transaction.',
+        outputSchema: OBJECT_OUTPUT_SCHEMA,
+        async handler(sdk, rawInput) {
+            const input = rawInput as WorkflowInput;
+            const commandName = 'build-auction-tx';
+            const currency = requireCurrency(input, 'currency', commandName);
+            const commonArgs = {
+                userAddress: requireString(input, 'user_address', commandName),
+                domainAddress: requireString(input, 'domain_address', commandName),
+                domainName: requireString(input, 'domain_name', commandName),
+                startTime: requireNumber(input, 'start_time', commandName),
+                endTime: requireNumber(input, 'end_time', commandName),
+                minBidValue: requireBigInt(input, 'min_bid_value', commandName),
+                maxBidValue: requireBigInt(input, 'max_bid_value', commandName),
+                minBidIncrement: requireNumber(input, 'min_bid_increment', commandName),
+                timeIncrement: requireNumber(input, 'time_increment', commandName),
+                isDeferred: optionalBoolean(input, 'is_deferred'),
+                queryId: optionalNumber(input, 'query_id')
+            };
+
+            if (currency === 'TON') {
+                return await sdk.tx.auctions.deployTonSimple(commonArgs);
+            }
+
+            return await sdk.tx.auctions.deployJettonSimple({
+                ...commonArgs,
+                isWeb3: currency === 'WEB3'
+            });
+        }
+    },
+    {
+        name: 'build-cancel-deal-tx',
+        layer: 'workflow',
+        summary: 'Build a deal cancellation transaction.',
+        description: 'Prepare a TonConnect-ready message for cancelling a sale, offer, or auction. Marketplace-specific mode is inferred automatically.',
+        aliases: [
+            'build-cancel-sale-tx',
+            'build-sale-cancel-tx',
+            'build-cancel-offer-tx',
+            'build-offer-cancel-tx',
+            'build-cancel-auction-tx',
+            'build-stop-auction-tx'
+        ],
+        acceptsInput: 'object',
+        params: [
+            { name: 'deal_type', type: 'string', required: true, enum: ['sale', 'offer', 'auction'], description: 'Deal type to cancel.' },
+            { name: 'deal_address', type: 'string', required: true, description: 'Sale, offer, or auction contract address.' },
+            { name: 'cancellation_comment', type: 'string', description: 'Optional offer cancellation comment.' },
+            { name: 'query_id', type: 'number', description: 'Optional query id for offer cancellation.' }
+        ],
+        examples: [
+            'webdom build-cancel-deal-tx --deal-type sale --deal-address EQ...',
+            'webdom build-cancel-deal-tx --deal-type offer --deal-address EQ...',
+            'webdom build-cancel-deal-tx --deal-type auction --deal-address EQ...'
+        ],
+        outputDescription: 'Prepared TonConnect transaction.',
+        outputSchema: OBJECT_OUTPUT_SCHEMA,
+        async handler(sdk, rawInput) {
+            const input = rawInput as WorkflowInput;
+            const commandName = 'build-cancel-deal-tx';
+            const dealType = requireString(input, 'deal_type', commandName);
+            const dealAddress = requireString(input, 'deal_address', commandName);
+
+            if (dealType === 'sale') {
+                const deal = await (sdk as WorkflowSdk).api.deals.get({ deal_address: dealAddress });
+                const domainsNumber = deal.domain_names?.length;
+                const marketplaceName = deal.marketplace?.name?.trim().toLowerCase();
+
+                if (!marketplaceName) {
+                    throw new Error(`Unable to determine marketplace for deal ${dealAddress}`);
+                }
+
+                if (typeof domainsNumber === 'number' && domainsNumber > 1) {
+                    return await sdk.tx.sales.cancelTonMultiple({
+                        saleAddress: dealAddress,
+                        domainsNumber
+                    });
+                }
+
+                return await sdk.tx.sales.cancel({
+                    saleAddress: dealAddress,
+                    isGetgems: isExternalMarketplace(marketplaceName)
+                });
+            }
+
+            if (dealType === 'offer') {
+                const currency = await inferOfferCurrency(sdk as WorkflowSdk, dealAddress);
+                const commonArgs = {
+                    offerAddress: dealAddress,
+                    cancellationComment: input.cancellation_comment as string | undefined,
+                    queryId: optionalNumber(input, 'query_id')
+                };
+
+                if (currency === 'TON') {
+                    return await sdk.tx.offers.cancelTonSimple(commonArgs);
+                }
+
+                return await sdk.tx.offers.cancelJettonSimple(commonArgs);
+            }
+
+            if (dealType === 'auction') {
+                const isGetgems = isExternalMarketplace(await getDealMarketplaceName(sdk as WorkflowSdk, dealAddress));
+                return await sdk.tx.auctions.stop({
+                    auctionAddress: dealAddress,
+                    isGetgems,
+                    isV4: isGetgems ? await inferGetgemsAuctionVersion(sdk as WorkflowSdk, dealAddress) : false
+                });
+            }
+
+            throw new Error('deal_type must be one of: sale, offer, auction');
+        }
+    },
+    {
+        name: 'build-change-offer-price-tx',
+        layer: 'workflow',
+        summary: 'Build an offer price change transaction.',
+        description: 'Prepare a TonConnect-ready message for changing the price and validity of a purchase offer.',
+        aliases: ['build-offer-price-change-tx'],
+        acceptsInput: 'object',
+        params: [
+            { name: 'offer_address', type: 'string', required: true, description: 'Offer contract address.' },
+            { name: 'commission_rate', type: 'number', required: true, description: 'Commission rate as a fraction, for example `0.05` for 5%.' },
+            { name: 'new_price', type: 'bigint', required: true, description: 'New offer price in minor units.' },
+            { name: 'new_valid_until', type: 'number', required: true, description: 'New Unix expiry timestamp.' },
+            { name: 'notify_seller', type: 'boolean', description: 'Whether to notify the seller.' },
+            { name: 'after_counterproposal', type: 'boolean', description: 'Whether this update happens after a counterproposal.' },
+            { name: 'query_id', type: 'number', description: 'Optional query id.' },
+            { name: 'user_address', type: 'string', description: 'Buyer wallet address. Required for USDT and WEB3 offers.' },
+            { name: 'jetton_wallet_address', type: 'string', description: 'Optional buyer jetton wallet address override.' }
+        ],
+        examples: [
+            'webdom build-change-offer-price-tx --offer-address EQ... --commission-rate 0.05 --new-price 2000000000 --new-valid-until 1767225600',
+            'webdom build-change-offer-price-tx --offer-address EQ... --user-address UQ... --commission-rate 0.05 --new-price 2000000 --new-valid-until 1767225600'
+        ],
+        outputDescription: 'Prepared TonConnect transaction.',
+        outputSchema: OBJECT_OUTPUT_SCHEMA,
+        async handler(sdk, rawInput) {
+            const input = rawInput as WorkflowInput;
+            const commandName = 'build-change-offer-price-tx';
+            const offerAddress = requireString(input, 'offer_address', commandName);
+            const offerPricing = await getOfferPricing(sdk as WorkflowSdk, offerAddress);
+            const commonArgs = {
+                offerAddress,
+                oldPrice: offerPricing.amount,
+                commissionRate: requireFraction(input, 'commission_rate', commandName),
+                newPrice: requireBigInt(input, 'new_price', commandName),
+                newValidUntil: requireNumber(input, 'new_valid_until', commandName),
+                notifySeller: optionalBoolean(input, 'notify_seller') ?? true,
+                queryId: optionalNumber(input, 'query_id'),
+                afterCounterproposal: optionalBoolean(input, 'after_counterproposal')
+            };
+
+            if (offerPricing.currency === 'TON') {
+                return await sdk.tx.offers.changeTonSimplePrice(commonArgs);
+            }
+
+            return await sdk.tx.offers.changeJettonSimplePrice({
+                ...commonArgs,
+                userAddress: requireString(input, 'user_address', commandName),
+                jettonWalletAddress: input.jetton_wallet_address as string | undefined
+            });
+        }
+    },
+    {
+        name: 'build-promote-sale-tx',
+        layer: 'workflow',
+        summary: 'Build a sale promotion transaction.',
+        description: 'Prepare a TonConnect-ready message for promoting a sale with move-up, hot, or colored placement using WEB3.',
+        aliases: ['build-sale-promotion-tx'],
+        acceptsInput: 'object',
+        params: [
+            { name: 'promotion_type', type: 'string', required: true, enum: ['move_up', 'hot', 'colored'], description: 'Promotion type.' },
+            { name: 'user_address', type: 'string', required: true, description: 'Seller wallet address.' },
+            { name: 'sale_address', type: 'string', required: true, description: 'Sale contract address.' },
+            { name: 'period', type: 'number', description: 'Promotion period in seconds. Required for hot and colored promotions. Price is resolved from marketplace config.' },
+            { name: 'web3_wallet_address', type: 'string', description: 'Optional WEB3 jetton wallet override.' },
+            { name: 'query_id', type: 'number', description: 'Optional query id.' }
+        ],
+        examples: [
+            'webdom build-promote-sale-tx --promotion-type move_up --user-address UQ... --sale-address EQ...',
+            'webdom build-promote-sale-tx --promotion-type hot --user-address UQ... --sale-address EQ... --period 86400',
+            'webdom build-promote-sale-tx --promotion-type colored --user-address UQ... --sale-address EQ... --period 86400'
+        ],
+        outputDescription: 'Prepared TonConnect transaction.',
+        outputSchema: OBJECT_OUTPUT_SCHEMA,
+        async handler(sdk, rawInput) {
+            const input = rawInput as WorkflowInput;
+            const commandName = 'build-promote-sale-tx';
+            const promotionType = requireString(input, 'promotion_type', commandName);
+            const config = await (sdk as WorkflowSdk).api.marketplace.getConfig();
+            const promotionPrices = config.promotion_prices;
+
+            let priceAmount: string | null | undefined;
+            let period: number | undefined;
+
+            if (promotionType === 'move_up') {
+                priceAmount = promotionPrices?.move_up_price?.amount;
+            } else {
+                period = optionalNumber(input, 'period');
+                if (period === undefined) {
+                    throw new Error(`Missing required parameter "period" for command ${commandName}`);
+                }
+
+                const periodPrices = promotionPrices?.period_prices?.[String(period)];
+                priceAmount = promotionType === 'hot'
+                    ? periodPrices?.hot_price?.amount
+                    : periodPrices?.colored_price?.amount;
+            }
+
+            if (typeof priceAmount !== 'string' || priceAmount.length === 0) {
+                const promotionTarget = promotionType === 'move_up' ? promotionType : `${promotionType}:${period}`;
+                throw new Error(`Unable to determine promotion price for ${promotionTarget}`);
+            }
+
+            const commonArgs = {
+                userAddress: requireString(input, 'user_address', commandName),
+                saleAddress: requireString(input, 'sale_address', commandName),
+                price: BigInt(priceAmount),
+                web3WalletAddress: input.web3_wallet_address as string | undefined,
+                queryId: optionalNumber(input, 'query_id')
+            };
+
+            if (promotionType === 'move_up') {
+                return await sdk.tx.marketplace.moveUpSale(commonArgs);
+            }
+
+            if (promotionType === 'hot') {
+                return await sdk.tx.marketplace.makeHotSale({
+                    ...commonArgs,
+                    period: period as number
+                });
+            }
+
+            if (promotionType === 'colored') {
+                return await sdk.tx.marketplace.makeColoredSale({
+                    ...commonArgs,
+                    period: period as number
+                });
+            }
+
+            throw new Error(`promotion_type must be one of: move_up, hot, colored`);
+        }
+    },
+    sdkCommand({
+        name: 'build-buy-subscription-tx',
+        layer: 'workflow',
+        summary: 'Build a marketplace subscription purchase transaction.',
+        description: 'Prepare a TonConnect-ready message for buying a marketplace subscription.',
+        params: [
+            { name: 'subscription_level', type: 'number', required: true, description: 'Subscription level.' },
+            { name: 'subscription_period', type: 'number', required: true, description: 'Subscription period in days or marketplace-defined units.' },
+            { name: 'subscription_price', type: 'bigint', required: true, description: 'Subscription price in nanotons.' },
+            { name: 'query_id', type: 'number', description: 'Optional query id.' }
+        ],
+        examples: ['webdom build-buy-subscription-tx --subscription-level 2 --subscription-period 30 --subscription-price 1000000000'],
+        outputDescription: 'Prepared TonConnect transaction.',
+        outputSchema: OBJECT_OUTPUT_SCHEMA,
+        sdkPath: ['tx', 'marketplace', 'buySubscription'],
+        mapInput(input) {
+            return {
+                subscriptionLevel: input.subscription_level,
+                subscriptionPeriod: input.subscription_period,
+                subscriptionPrice: input.subscription_price,
+                queryId: input.query_id
             };
         }
     })

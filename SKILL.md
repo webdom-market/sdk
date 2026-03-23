@@ -57,46 +57,406 @@ npx @webdom/sdk list-user-activity --address UQ... --limit 20
 
 Token storage defaults to `~/.config/webdom/agent-token`. You can override it with `--token-file` or `WEBDOM_AGENT_TOKEN_FILE`.
 
-## Action Flows
+## Intent Recipes
 
-### Buy a domain at fixed price
+Map common user requests to concrete commands instead of inventing new workflows.
 
-Use this when the active deal is a TON simple sale.
+### "List my domains" / "Show my domains"
 
-```bash
-npx @webdom/sdk get-domain --domain example.ton
-npx @webdom/sdk find-deal --domain example.ton --state active --limit 10
-npx @webdom/sdk build-purchase-tx --sale-address EQ...
-```
-
-### Bid on a secondary auction
+This requires a wallet address. Prefer the owner address unless the user explicitly asks about linked-wallet records.
 
 ```bash
-npx @webdom/sdk get-deal --deal EQ...
-npx @webdom/sdk list-deal-bids --deal EQ... --limit 20
-npx @webdom/sdk build-auction-bid-tx --auction-address EQ... --bid-value 1000000000
+npx @webdom/sdk find-domain --owner-address UQ... --limit 100 --pretty
 ```
 
-### Bid on a primary DNS auction
+If the wallet address is already in the shell environment:
 
 ```bash
-npx @webdom/sdk get-domain --domain example.ton
-npx @webdom/sdk build-primary-auction-bid-tx --domain-address EQ... --bid-value 1000000000
+npx @webdom/sdk find-domain --owner-address "$WEBDOM_WALLET_ADDRESS" --limit 100 --pretty
 ```
 
-### Accept a purchase offer
+If the user means domains linked through DNS wallet records rather than ownership:
 
 ```bash
-npx @webdom/sdk get-best-offer --domain example.ton
-npx @webdom/sdk build-accept-offer-tx --domain-address EQ... --offer-address EQ... --user-address UQ...
+npx @webdom/sdk find-domain --linked-wallet-address UQ... --limit 100 --pretty
 ```
 
-### Link or clear a wallet record
+If no wallet address is available from the request or environment, ask for it. Do not guess "my domains" from an auth token alone.
+
+### "Show domain details for X"
 
 ```bash
-npx @webdom/sdk build-link-wallet-tx --domain-address EQ... --wallet-address UQ...
-npx @webdom/sdk build-link-wallet-tx --domain-address EQ...
+npx @webdom/sdk get-domain --domain example.ton --pretty
 ```
+
+### "Find deals for X" / "Is X for sale?"
+
+```bash
+npx @webdom/sdk find-deal --domain example.ton --state active --limit 20 --pretty
+```
+
+### "Show the best offer for X"
+
+```bash
+npx @webdom/sdk get-best-offer --domain example.ton --pretty
+```
+
+### "Show my offers"
+
+This requires Webdom auth.
+
+```bash
+npx @webdom/sdk list-my-offers --pretty
+```
+
+### "Show activity for this wallet"
+
+```bash
+npx @webdom/sdk list-user-activity --address UQ... --limit 20 --pretty
+```
+
+### "Show balances for this wallet" / "Do I have enough balance?"
+
+All main balances:
+
+```bash
+npx @webdom/sdk get-wallet-balances --address UQ... --pretty
+```
+
+Asset-specific checks:
+
+```bash
+npx @webdom/sdk get-ton-balance --address UQ... --pretty
+npx @webdom/sdk get-usdt-balance --address UQ... --pretty
+npx @webdom/sdk get-web3-balance --address UQ... --pretty
+```
+
+### "Show marketplace tariffs" / "Show marketplace fees" / "Show commissions" / "Show promotion prices"
+
+Use `marketplace.config` as the source of truth for deploy fees, commissions, and promotion pricing:
+
+```bash
+npx @webdom/sdk marketplace.config --pretty
+```
+
+What to read from the response:
+
+- deploy fees and deal-specific commissions: `deploy_configs`
+- move-up promotion price: `promotion_prices.move_up_price`
+- hot and colored promotion prices by period: `promotion_prices.period_prices`
+
+Useful direct selections:
+
+```bash
+npx @webdom/sdk marketplace.config --select deploy_configs --pretty
+npx @webdom/sdk marketplace.config --select promotion_prices --pretty
+```
+
+### "Show transactions for this domain"
+
+```bash
+npx @webdom/sdk list-domain-transactions --domain example.ton --limit 20 --pretty
+```
+
+### "Reverse resolve this wallet" / "What domain belongs to this address?"
+
+```bash
+npx @webdom/sdk reverse-resolve-domain --address UQ... --pretty
+```
+
+### "Show global transactions" / "Show recent marketplace sales"
+
+Transactions:
+
+```bash
+npx @webdom/sdk list-transactions-history --limit 20 --pretty
+```
+
+Sales:
+
+```bash
+npx @webdom/sdk list-sales-history --zone ton --limit 20 --pretty
+```
+
+Auction bids:
+
+```bash
+npx @webdom/sdk list-auction-bids-history --limit 20 --pretty
+```
+
+### "Show market overview" / "Show charts" / "Show top sales"
+
+Overview:
+
+```bash
+npx @webdom/sdk get-market-overview --zone ton --pretty
+```
+
+Charts:
+
+```bash
+npx @webdom/sdk get-market-charts --zone ton --pretty
+```
+
+Top sales:
+
+```bash
+npx @webdom/sdk list-top-sales --zone ton --segment secondary --limit 10 --pretty
+```
+
+User rankings:
+
+```bash
+npx @webdom/sdk list-user-rankings --rating total_purchases_volume --limit 10 --pretty
+```
+
+### "Buy this domain"
+
+For a fixed-price TON sale:
+
+```bash
+npx @webdom/sdk find-deal --domain example.ton --state active --limit 20 --pretty
+npx @webdom/sdk build-purchase-tx --sale-address EQ... --pretty
+```
+
+Then send the resulting `.messages` with `@ton/mcp@alpha send_raw_transaction`.
+
+### "Place a bid on this auction"
+
+For a secondary auction:
+
+```bash
+npx @webdom/sdk get-deal --deal EQ... --pretty
+npx @webdom/sdk build-auction-bid-tx --auction-address EQ... --bid-value 1000000000 --pretty
+```
+
+For a primary DNS auction:
+
+```bash
+npx @webdom/sdk get-domain --domain example.ton --pretty
+npx @webdom/sdk build-primary-auction-bid-tx --domain-address EQ... --bid-value 1000000000 --pretty
+```
+
+### "List this domain for sale" / "Put my domain on sale"
+
+Use the workflow CLI command:
+
+```bash
+npx @webdom/sdk build-sale-tx \
+  --user-address UQ... \
+  --domain-address EQ... \
+  --domain-name example.ton \
+  --currency USDT \
+  --price 1000000000 \
+  --valid-until 1767225600 \
+  --pretty
+```
+
+Variations:
+
+- TON sale: `--currency TON`
+- USDT sale: `--currency USDT`
+- WEB3 sale: `--currency WEB3`
+
+### "Make an offer for this domain" / "Place a purchase offer"
+
+Use the workflow CLI command:
+
+```bash
+npx @webdom/sdk build-offer-tx \
+  --domain-name example.ton \
+  --seller-address UQ... \
+  --currency TON \
+  --price 1000000000 \
+  --valid-until 1767225600 \
+  --pretty
+```
+
+For USDT or WEB3 offers, also pass the buyer wallet:
+
+```bash
+npx @webdom/sdk build-offer-tx \
+  --domain-name example.ton \
+  --seller-address UQ... \
+  --user-address UQ... \
+  --currency USDT \
+  --price 1000000000 \
+  --valid-until 1767225600 \
+  --pretty
+```
+
+`commission` is optional in the CLI command. If omitted, it is loaded from `marketplace.config`.
+
+### "Change the price of this offer"
+
+TON offer:
+
+```bash
+npx @webdom/sdk build-change-offer-price-tx \
+  --offer-address EQ... \
+  --commission-rate 0.05 \
+  --new-price 2000000000 \
+  --new-valid-until 1767225600 \
+  --pretty
+```
+
+USDT or WEB3 offer:
+
+```bash
+npx @webdom/sdk build-change-offer-price-tx \
+  --offer-address EQ... \
+  --user-address UQ... \
+  --commission-rate 0.05 \
+  --new-price 2000000 \
+  --new-valid-until 1767225600 \
+  --pretty
+```
+
+### "Start an auction for this domain"
+
+Use the workflow CLI command:
+
+```bash
+npx @webdom/sdk build-auction-tx \
+  --user-address UQ... \
+  --domain-address EQ... \
+  --domain-name example.ton \
+  --currency TON \
+  --start-time 1766620800 \
+  --end-time 1767225600 \
+  --min-bid-value 1000000000 \
+  --max-bid-value 100000000000 \
+  --min-bid-increment 5 \
+  --time-increment 300 \
+  --pretty
+```
+
+### "Accept this purchase offer"
+
+```bash
+npx @webdom/sdk get-best-offer --domain example.ton --pretty
+npx @webdom/sdk build-accept-offer-tx \
+  --domain-address EQ... \
+  --offer-address EQ... \
+  --user-address UQ... \
+  --pretty
+```
+
+### "Link this wallet to the domain" / "Clear the linked wallet"
+
+Link:
+
+```bash
+npx @webdom/sdk build-link-wallet-tx --domain-address EQ... --wallet-address UQ... --pretty
+```
+
+Clear:
+
+```bash
+npx @webdom/sdk build-link-wallet-tx --domain-address EQ... --pretty
+```
+
+### "Cancel this sale"
+
+Simple sale:
+
+```bash
+npx @webdom/sdk build-cancel-deal-tx --deal-type sale --deal-address EQ... --pretty
+```
+
+Multiple sale:
+
+```bash
+npx @webdom/sdk build-cancel-deal-tx --deal-type sale --deal-address EQ... --pretty
+```
+
+The CLI detects whether the sale is Webdom or Getgems automatically and reads the number of domains from the deal itself.
+
+### "Cancel this offer"
+
+Offer currency is detected automatically:
+
+```bash
+npx @webdom/sdk build-cancel-deal-tx --deal-type offer --deal-address EQ... --pretty
+```
+
+### "Cancel this auction" / "Stop this auction"
+
+```bash
+npx @webdom/sdk build-cancel-deal-tx --deal-type auction --deal-address EQ... --pretty
+```
+
+### "Promote this sale" / "Move this sale up" / "Make this sale hot" / "Make this sale colored"
+
+Move up:
+
+```bash
+npx @webdom/sdk build-promote-sale-tx \
+  --promotion-type move_up \
+  --user-address UQ... \
+  --sale-address EQ... \
+  --pretty
+```
+
+Hot:
+
+```bash
+npx @webdom/sdk build-promote-sale-tx \
+  --promotion-type hot \
+  --user-address UQ... \
+  --sale-address EQ... \
+  --period 86400 \
+  --pretty
+```
+
+Colored:
+
+```bash
+npx @webdom/sdk build-promote-sale-tx \
+  --promotion-type colored \
+  --user-address UQ... \
+  --sale-address EQ... \
+  --period 86400 \
+  --pretty
+```
+
+Promotion prices are resolved from `marketplace.config`.
+
+### "Buy marketplace subscription"
+
+```bash
+npx @webdom/sdk build-buy-subscription-tx \
+  --subscription-level 2 \
+  --subscription-period 30 \
+  --subscription-price 1000000000 \
+  --pretty
+```
+
+### Main flow variants
+
+- Check balances before execution: `get-wallet-balances`, `get-ton-balance`, `get-usdt-balance`, `get-web3-balance`
+- Buy a domain: `find-deal` -> `build-purchase-tx`
+- Bid on a secondary auction: `get-deal` -> `build-auction-bid-tx`
+- Bid on a primary DNS auction: `get-domain` -> `build-primary-auction-bid-tx`
+- List one domain for sale: `build-sale-tx`
+- Create a purchase offer: `build-offer-tx`
+- Change offer price: `build-change-offer-price-tx`
+- Start a one-domain auction: `build-auction-tx`
+- Accept an offer: `build-accept-offer-tx`
+- Link or clear wallet: `build-link-wallet-tx`
+- Cancel sale / offer / auction: `build-cancel-deal-tx`
+- Promote sale: `build-promote-sale-tx`
+- Buy subscription: `build-buy-subscription-tx`
+
+Before broadcasting any prepared transaction, check that the wallet has enough balance for the required asset and enough TON for gas.
+
+For one-domain write flows, prefer workflow CLI commands over raw SDK calls.
+
+Use raw SDK tx builders only when the workflow layer does not cover the case yet, such as:
+
+- multiple-domain sale deployment
+- multiple-domain auction deployment
+- counterproposal flows and other advanced offer management beyond the workflow layer
 
 ## Broadcasting Prepared Transactions
 

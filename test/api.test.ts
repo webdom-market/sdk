@@ -33,12 +33,38 @@ const ANALYTICS_AND_MARKETPLACE_CASES = [
                             currency: 'TON'
                         }
                     }
+                },
+                promotion_prices: {
+                    move_up_price: {
+                        amount: '1000',
+                        amount_decimal: 1,
+                        decimals: 3,
+                        currency: 'WEB3'
+                    },
+                    period_prices: {
+                        '86400': {
+                            hot_price: {
+                                amount: '2500',
+                                amount_decimal: 2.5,
+                                decimals: 3,
+                                currency: 'WEB3'
+                            },
+                            colored_price: {
+                                amount: '4000',
+                                amount_decimal: 4,
+                                decimals: 3,
+                                currency: 'WEB3'
+                            }
+                        }
+                    }
                 }
             }
         },
         assertHighLevel(result: any) {
             expect(result.name).toBe('webdom');
             expect(result.deploy_configs.ton_simple_sale.deploy_fee.amount).toBe('1500000000');
+            expect(result.promotion_prices.move_up_price.amount).toBe('1000');
+            expect(result.promotion_prices.period_prices['86400'].hot_price.currency).toBe('WEB3');
         }
     },
     {

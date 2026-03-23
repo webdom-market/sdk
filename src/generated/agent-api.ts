@@ -934,6 +934,7 @@ export interface components {
             /** Format: date-time */
             last_updated_at: string;
             name: string;
+            promotion_prices: components["schemas"]["MarketplacePromotionPrices"];
         };
         MarketplaceConfigEnvelope: components["schemas"]["BaseEnvelope"] & {
             data: components["schemas"]["MarketplaceConfig"];
@@ -963,6 +964,16 @@ export interface components {
             min_time_increment?: number | null;
             min_time_increment_usdt?: number | null;
             min_time_increment_web3?: number | null;
+        };
+        MarketplacePromotionPeriodPrices: {
+            colored_price: components["schemas"]["Money"];
+            hot_price: components["schemas"]["Money"];
+        };
+        MarketplacePromotionPrices: {
+            move_up_price: components["schemas"]["Money"];
+            period_prices: {
+                [key: string]: components["schemas"]["MarketplacePromotionPeriodPrices"];
+            };
         };
         MarketRecordBase: {
             address: components["schemas"]["AddressObject"];
@@ -2305,6 +2316,8 @@ export type MarketParticipants = components["schemas"]["MarketParticipants"];
 export type MarketplaceConfig = components["schemas"]["MarketplaceConfig"];
 export type MarketplaceConfigEnvelope = components["schemas"]["MarketplaceConfigEnvelope"];
 export type MarketplaceDeployConfig = components["schemas"]["MarketplaceDeployConfig"];
+export type MarketplacePromotionPeriodPrices = components["schemas"]["MarketplacePromotionPeriodPrices"];
+export type MarketplacePromotionPrices = components["schemas"]["MarketplacePromotionPrices"];
 export type MarketRecordBase = components["schemas"]["MarketRecordBase"];
 export type Meta = components["schemas"]["Meta"];
 export type Money = components["schemas"]["Money"];

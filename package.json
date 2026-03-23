@@ -1,6 +1,6 @@
 {
     "name": "@webdom/sdk",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "description": "TypeScript SDK for Webdom agent API and contract transaction builders",
     "license": "Apache-2.0",
     "repository": {
