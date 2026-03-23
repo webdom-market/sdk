@@ -18,6 +18,8 @@ jobs:
     publish:
         runs-on: ubuntu-latest
         environment: npm-publish
+        env:
+            NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
 
         steps:
             - name: Checkout
@@ -82,11 +84,11 @@ jobs:
                   fi
 
             - name: Publish to npm with token
-              if: ${{ secrets.NPM_TOKEN != '' }}
+              if: ${{ env.NPM_TOKEN != '' }}
               run: npm publish --access public
               env:
-                  NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+                  NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}
 
             - name: Publish to npm with trusted publishing
-              if: ${{ secrets.NPM_TOKEN == '' }}
+              if: ${{ env.NPM_TOKEN == '' }}
               run: npm publish --access public
