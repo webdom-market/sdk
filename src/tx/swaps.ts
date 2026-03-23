@@ -7,9 +7,7 @@ import {
     getMarketplaceDeployConfig,
     parseRequiredBigInt,
     parseAddress,
-    prepareSingle,
-    resolveCompletionCommission,
-    resolveDeployFee
+    prepareSingle
 } from './shared';
 
 export function createSwapTransactions(context: TxContext) {
