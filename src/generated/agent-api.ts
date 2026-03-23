@@ -981,6 +981,8 @@ export interface components {
             /** Format: date-time */
             last_updated_at: string;
             participants: components["schemas"]["MarketParticipants"];
+            /** @description Parsed contract version index inferred from the on-chain code hash. */
+            version_index: number;
         };
         Meta: {
             api_version: string;

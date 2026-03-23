@@ -1186,6 +1186,7 @@ npx @webdom/sdk build-sale-tx \
 ```
 
 Use `--currency TON` for TON listings or `--currency WEB3` for WEB3 listings.
+You can also configure sale auto-renew with `--auto-renew-cooldown <seconds>` and `--auto-renew-iterations <count>`.
 
 ### Build A Purchase-Offer Deployment Transaction
 
@@ -1353,6 +1354,28 @@ npx @webdom/sdk build-link-wallet-tx --domain-address EQDUu6QDlo1F5exjcuEzUmt42p
   }
 }
 ```
+
+### Build A Domain Renewal Transaction
+
+Renew a regular domain directly from the domain contract:
+
+```bash
+npx @webdom/sdk build-renew-domain-tx --domain-name example.ton --pretty
+```
+
+Renew a domain that is currently listed on Webdom:
+
+```bash
+npx @webdom/sdk build-renew-domain-tx --domain-name listed.ton --query-id 7 --pretty
+```
+
+`build-renew-domain-tx` loads the domain first and chooses the renewal path automatically:
+
+- direct renew when the domain is not on a deal
+- sale renew when the domain is on a Webdom fixed-price sale
+- auction renew when the domain is on a Webdom auction
+
+The command rejects unsupported states such as primary DNS auctions, swap contracts, or listings on external marketplaces.
 
 ### Build A Purchase-Offer Acceptance Transaction
 

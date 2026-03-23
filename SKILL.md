@@ -257,6 +257,7 @@ Variations:
 - TON sale: `--currency TON`
 - USDT sale: `--currency USDT`
 - WEB3 sale: `--currency WEB3`
+- Optional auto-renew for the sale: `--auto-renew-cooldown <seconds>` and `--auto-renew-iterations <count>`
 
 ### "Make an offer for this domain" / "Place a purchase offer"
 
@@ -356,6 +357,20 @@ Clear:
 npx @webdom/sdk build-link-wallet-tx --domain-address EQ... --pretty
 ```
 
+### "Renew this domain"
+
+```bash
+npx @webdom/sdk build-renew-domain-tx --domain-name example.ton --pretty
+```
+
+The CLI loads the domain and picks the renewal path automatically:
+
+- direct renew when the domain is not on a deal
+- sale renew when the domain is on a Webdom fixed-price sale
+- auction renew when the domain is on a Webdom auction
+
+It rejects unsupported states such as primary DNS auctions, swap contracts, or external marketplaces.
+
 ### "Cancel this sale"
 
 Simple sale:
@@ -444,6 +459,7 @@ npx @webdom/sdk build-buy-subscription-tx \
 - Start a one-domain auction: `build-auction-tx`
 - Accept an offer: `build-accept-offer-tx`
 - Link or clear wallet: `build-link-wallet-tx`
+- Renew a domain: `build-renew-domain-tx`
 - Cancel sale / offer / auction: `build-cancel-deal-tx`
 - Promote sale: `build-promote-sale-tx`
 - Buy subscription: `build-buy-subscription-tx`

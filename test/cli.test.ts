@@ -625,6 +625,222 @@ describe('cli', () => {
         });
     });
 
+    it('routes build-renew-domain-tx to direct domain renewal when the domain is not on a deal', async () => {
+        const command = resolveCliCommand('build-renew-domain-tx');
+        expect(command).not.toBeNull();
+
+        const input = prepareCommandInput(
+            command!,
+            [],
+            {
+                domain_name: 'gold.ton'
+            },
+            undefined,
+            {}
+        );
+
+        const renew = async (args: unknown) => ({ route: 'renew-domain', args });
+        const result = await command!.handler({
+            api: {
+                domains: {
+                    get: async () => ({
+                        address: TEST_ADDRESS,
+                        current_sale: null,
+                        status: {
+                            is_for_sale: false,
+                            is_on_primary_auction: false,
+                            is_on_secondary_auction: false,
+                            is_on_swap_contract: false
+                        }
+                    })
+                }
+            },
+            tx: {
+                domains: {
+                    renew
+                }
+            }
+        } as any, input, { registry: [] });
+
+        expect(result).toEqual({
+            route: 'renew-domain',
+            args: {
+                domainAddress: TEST_ADDRESS,
+                queryId: undefined
+            }
+        });
+    });
+
+    it('routes build-renew-domain-tx to sale renewal for webdom sales', async () => {
+        const command = resolveCliCommand('build-renew-domain-tx');
+        expect(command).not.toBeNull();
+
+        const input = prepareCommandInput(
+            command!,
+            [],
+            {
+                domain_name: 'gold.ton',
+                query_id: '7'
+            },
+            undefined,
+            {}
+        );
+
+        const renewDomains = async (args: unknown) => ({ route: 'renew-sale-domains', args });
+        const result = await command!.handler({
+            api: {
+                domains: {
+                    get: async () => ({
+                        address: TEST_ADDRESS,
+                        current_sale: {
+                            address: TEST_ADDRESS,
+                            deal_type: 'fix_price_sale'
+                        },
+                        status: {
+                            is_for_sale: true,
+                            is_on_primary_auction: false,
+                            is_on_secondary_auction: false,
+                            is_on_swap_contract: false
+                        }
+                    })
+                },
+                deals: {
+                    get: async () => ({
+                        domain_names: ['gold.ton'],
+                        marketplace: {
+                            name: 'webdom'
+                        },
+                        version_index: 4
+                    })
+                }
+            },
+            tx: {
+                sales: {
+                    renewDomains
+                }
+            }
+        } as any, input, { registry: [] });
+
+        expect(result).toEqual({
+            route: 'renew-sale-domains',
+            args: {
+                saleAddress: TEST_ADDRESS,
+                domainsNumber: 1,
+                queryId: 7,
+                isOldContract: true
+            }
+        });
+    });
+
+    it('routes build-renew-domain-tx to auction renewal for webdom auctions', async () => {
+        const command = resolveCliCommand('build-renew-domain-tx');
+        expect(command).not.toBeNull();
+
+        const input = prepareCommandInput(
+            command!,
+            [],
+            {
+                domain_name: 'gold.ton'
+            },
+            undefined,
+            {}
+        );
+
+        const renewDomains = async (args: unknown) => ({ route: 'renew-auction-domains', args });
+        const result = await command!.handler({
+            api: {
+                domains: {
+                    get: async () => ({
+                        address: TEST_ADDRESS,
+                        current_sale: {
+                            address: TEST_ADDRESS,
+                            deal_type: 'auction'
+                        },
+                        status: {
+                            is_for_sale: false,
+                            is_on_primary_auction: false,
+                            is_on_secondary_auction: true,
+                            is_on_swap_contract: false
+                        }
+                    })
+                },
+                deals: {
+                    get: async () => ({
+                        domain_names: ['gold.ton', 'rare.ton'],
+                        marketplace: {
+                            name: 'webdom'
+                        },
+                        version_index: 6
+                    })
+                }
+            },
+            tx: {
+                auctions: {
+                    renewDomains
+                }
+            }
+        } as any, input, { registry: [] });
+
+        expect(result).toEqual({
+            route: 'renew-auction-domains',
+            args: {
+                auctionAddress: TEST_ADDRESS,
+                domainsNumber: 2,
+                queryId: undefined,
+                isOldContract: false
+            }
+        });
+    });
+
+    it('rejects build-renew-domain-tx for external marketplaces', async () => {
+        const command = resolveCliCommand('build-renew-domain-tx');
+        expect(command).not.toBeNull();
+
+        const input = prepareCommandInput(
+            command!,
+            [],
+            {
+                domain_name: 'gold.ton'
+            },
+            undefined,
+            {}
+        );
+
+        await expect(command!.handler({
+            api: {
+                domains: {
+                    get: async () => ({
+                        address: TEST_ADDRESS,
+                        current_sale: {
+                            address: TEST_ADDRESS,
+                            deal_type: 'fix_price_sale'
+                        },
+                        status: {
+                            is_for_sale: true,
+                            is_on_primary_auction: false,
+                            is_on_secondary_auction: false,
+                            is_on_swap_contract: false
+                        }
+                    })
+                },
+                deals: {
+                    get: async () => ({
+                        domain_names: ['gold.ton'],
+                        marketplace: {
+                            name: 'fragment'
+                        },
+                        version_index: 110
+                    })
+                }
+            },
+            tx: {
+                sales: {
+                    renewDomains: async (_args: unknown) => ({ route: 'renew-sale-domains' })
+                }
+            }
+        } as any, input, { registry: [] })).rejects.toThrow('Unable to renew gold.ton while it is listed on fragment');
+    });
+
     it('routes build-cancel-deal-tx to simple sale cancellation by default', async () => {
         const command = resolveCliCommand('build-cancel-deal-tx');
         expect(command).not.toBeNull();

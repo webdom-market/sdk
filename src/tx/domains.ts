@@ -64,6 +64,17 @@ export function createDomainTransactions(context: TxContext) {
             );
         },
 
+        renew(args: { domainAddress: AddressLike; queryId?: number }) {
+            return prepareSingle(
+                'RenewDomain',
+                DomainContract.getRemoveDnsRecordMessageInfo(parseAddress(args.domainAddress), 'dummy', args.queryId ?? 0),
+                {
+                    queryId: args.queryId,
+                    contractAddress: args.domainAddress
+                }
+            );
+        },
+
         linkWallet(args: { domainAddress: AddressLike; walletAddress?: AddressLike; queryId?: number }) {
             return prepareSingle(
                 'LinkWallet',

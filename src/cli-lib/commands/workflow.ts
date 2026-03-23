@@ -23,12 +23,28 @@ import { parseAddress } from '../../tx/shared';
 type WorkflowInput = Record<string, unknown>;
 type WorkflowSdk = {
     api: {
+        domains: {
+            get(args: { domain_name: string }): Promise<{
+                address?: string | null;
+                current_sale?: {
+                    address?: string | null;
+                    deal_type?: 'fix_price_sale' | 'auction' | 'domains_swap' | null;
+                } | null;
+                status?: {
+                    is_for_sale?: boolean;
+                    is_on_primary_auction?: boolean;
+                    is_on_secondary_auction?: boolean;
+                    is_on_swap_contract?: boolean;
+                } | null;
+            }>;
+        };
         deals: {
             get(args: { deal_address: string }): Promise<{
                 domain_names?: string[] | null;
                 marketplace?: {
                     name?: string | null;
                 } | null;
+                version_index?: number | null;
             }>;
         };
         offers: {
@@ -719,6 +735,94 @@ export const WORKFLOW_COMMANDS: CliCommandDefinition[] = [
             };
         }
     }),
+    {
+        name: 'build-renew-domain-tx',
+        layer: 'workflow',
+        summary: 'Build a domain renewal transaction.',
+        description: 'Prepare a TonConnect-ready renewal transaction and automatically choose the direct, sale, or auction renewal path.',
+        aliases: ['build-renew-tx'],
+        acceptsInput: 'object',
+        params: [
+            { name: 'domain_name', type: 'string', required: true, description: 'Domain name.' },
+            { name: 'query_id', type: 'number', description: 'Optional query id.' }
+        ],
+        examples: [
+            'webdom build-renew-domain-tx --domain-name example.ton',
+            'webdom build-renew-domain-tx --domain-name listed.ton --query-id 7'
+        ],
+        outputDescription: 'Prepared TonConnect transaction.',
+        outputSchema: OBJECT_OUTPUT_SCHEMA,
+        async handler(sdk, rawInput) {
+            const input = rawInput as WorkflowInput;
+            const commandName = 'build-renew-domain-tx';
+            const domainName = requireString(input, 'domain_name', commandName);
+            const queryId = optionalNumber(input, 'query_id');
+            const domain = await (sdk as WorkflowSdk).api.domains.get({ domain_name: domainName });
+
+            if (typeof domain.address !== 'string' || domain.address.length === 0) {
+                throw new Error(`Unable to determine domain address for ${domainName}`);
+            }
+
+            const currentSale = domain.current_sale;
+            const isOnDeal = Boolean(currentSale?.address && currentSale.deal_type);
+
+            if (!isOnDeal) {
+                return await sdk.tx.domains.renew({
+                    domainAddress: domain.address,
+                    queryId
+                });
+            }
+
+            if (domain.status?.is_on_primary_auction) {
+                throw new Error(`Unable to renew ${domainName} while it is on a primary auction`);
+            }
+
+            if (!currentSale) {
+                throw new Error(`Unable to determine active deal details for ${domainName}`);
+            }
+
+            if (currentSale.deal_type === 'domains_swap' || domain.status?.is_on_swap_contract) {
+                throw new Error(`Unable to renew ${domainName} while it is on a domain swap contract`);
+            }
+
+            const dealAddress = currentSale.address;
+            if (typeof dealAddress !== 'string' || dealAddress.length === 0) {
+                throw new Error(`Unable to determine active deal address for ${domainName}`);
+            }
+
+            const deal = await (sdk as WorkflowSdk).api.deals.get({ deal_address: dealAddress });
+            const marketplaceName = deal.marketplace?.name?.trim().toLowerCase();
+            if (!marketplaceName) {
+                throw new Error(`Unable to determine marketplace for deal ${dealAddress}`);
+            }
+            if (marketplaceName !== 'webdom') {
+                throw new Error(`Unable to renew ${domainName} while it is listed on ${marketplaceName}`);
+            }
+
+            const domainsNumber = deal.domain_names?.length ?? 1;
+            const versionIndex = deal.version_index ?? 0;
+
+            if (currentSale.deal_type === 'fix_price_sale') {
+                return await sdk.tx.sales.renewDomains({
+                    saleAddress: dealAddress,
+                    domainsNumber,
+                    queryId,
+                    isOldContract: versionIndex < 5
+                });
+            }
+
+            if (currentSale.deal_type === 'auction') {
+                return await sdk.tx.auctions.renewDomains({
+                    auctionAddress: dealAddress,
+                    domainsNumber,
+                    queryId,
+                    isOldContract: versionIndex < 5
+                });
+            }
+
+            throw new Error(`Unable to determine renewal path for ${domainName}`);
+        }
+    },
     sdkCommand({
         name: 'build-accept-offer-tx',
         layer: 'workflow',
