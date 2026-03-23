@@ -1,6 +1,13 @@
-# Webdom SDK
+# Webdom Agent SDK
 
-TypeScript SDK for the [Webdom Agent API](https://webdom.market/api/docs/agent-api), TON Proof authentication, Webdom transaction builders, and low-level contract helpers.
+Agent skills & TypeScript SDK for the [Webdom Agent API](https://webdom.market/api/docs/agent-api), Webdom transaction builders, and low-level smart contracts helpers.
+
+## Overview
+
+TON DNS is one of the [clearest](https://webdom.market/analytics) on-chain narratives in the TON ecosystem outside of Telegram-native NFTs. The market has shown renewed momentum in 2026: February 2026 was the strongest month for `.ton` mint volume at roughly 282k TON, surpassed only by August 2022 during the initial TON DNS release. Secondary market activity has accelerated as well. As of March 23, 2026, `.ton` secondary sales have already reached more than 22.8k TON for the month, making March 2026 the second-strongest month on record for secondary market volume and roughly 3x the average monthly secondary volume over the prior 12 months.
+
+This repository provides AI agents and developers with seamless access to the TON DNS ecosystem. With these tools, agents can easily discover domains, check ownership and market status, authenticate using TON wallets, and prepare transactions for buying, selling, bidding, renewing, and managing domains — enabling all the actions of a real user.
+
 
 ## Installation
 
