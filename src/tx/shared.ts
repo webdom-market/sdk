@@ -83,7 +83,7 @@ export function prepareSingle(
     };
 }
 
-async function getMarketplaceDeployConfig(context: TxContext, alias: MarketplaceDeployAlias) {
+export async function getMarketplaceDeployConfig(context: TxContext, alias: MarketplaceDeployAlias) {
     const config = await context.api.marketplace.getConfig() as AgentMarketplaceConfig;
     const deployConfig = config.deploy_configs[alias];
 

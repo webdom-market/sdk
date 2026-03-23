@@ -12,7 +12,8 @@ info:
     - public read API where possible;
     - authenticated access via TON Proof challenge exchange into a bearer API token;
     - normalized read models for domains, deals, offers, users, analytics, and history.
-    - default rate limit is 5 requests per second with burst 20, enforced per authenticated wallet and per client IP.
+    - authenticated requests are limited to 5 requests per second with burst 20, enforced per authenticated wallet and per client IP.
+    - unauthenticated requests are limited to 1 request per second per client IP.
 
     Operational notes:
     - any endpoint in this API may return `429 Too Many Requests` when either the wallet-scoped or IP-scoped limiter is exceeded;

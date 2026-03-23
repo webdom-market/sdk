@@ -53,4 +53,52 @@ describe('transaction namespaces', () => {
         expect(transaction.messages[0]?.amount).toBe('1676000000');
         expect(transaction.meta?.kind).toBe('PurchaseTonSimpleSale');
     });
+
+    it('fetches marketplace config once for deployDomainSwap when both values are omitted', async () => {
+        let configRequests = 0;
+        const sdk = createWebdomSdk({
+            fetch: async (input) => {
+                const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+
+                if (url.endsWith('/marketplace/config')) {
+                    configRequests += 1;
+                    return jsonResponse({
+                        success: true,
+                        meta: {
+                            request_id: 'req-marketplace-config'
+                        },
+                        data: {
+                            deploy_configs: {
+                                multiple_domain_swap: {
+                                    deploy_fee: {
+                                        amount: '1500000000',
+                                        currency: 'TON'
+                                    },
+                                    completion_commission: {
+                                        amount: '200000000',
+                                        currency: 'TON'
+                                    }
+                                }
+                            }
+                        }
+                    });
+                }
+
+                throw new Error(`Unexpected fetch URL: ${url}`);
+            }
+        });
+
+        const transaction = await sdk.tx.swaps.deployDomainSwap({
+            leftDomainAddresses: [TEST_ADDRESS],
+            leftPaymentTotal: 1n,
+            rightOwnerAddress: TEST_ADDRESS,
+            rightDomainAddresses: [TEST_ADDRESS],
+            rightPaymentTotal: 2n,
+            validUntil: 1_700_000_000
+        });
+
+        expect(configRequests).toBe(1);
+        expect(transaction.messages).toHaveLength(1);
+        expect(transaction.meta?.kind).toBe('DeployDomainSwap');
+    });
 });

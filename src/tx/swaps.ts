@@ -4,6 +4,8 @@ import type { AddressLike } from '../config';
 import { DomainSwap, Marketplace } from '../contracts';
 import type { TxContext } from './shared';
 import {
+    getMarketplaceDeployConfig,
+    parseRequiredBigInt,
     parseAddress,
     prepareSingle,
     resolveCompletionCommission,
@@ -25,10 +27,20 @@ export function createSwapTransactions(context: TxContext) {
             queryId?: number;
             domainNames?: string[];
         }) {
-            const [deployFee, completionCommission] = await Promise.all([
-                resolveDeployFee(context, 'multiple_domain_swap', args.deployFee),
-                resolveCompletionCommission(context, 'multiple_domain_swap', args.completionCommission)
-            ]);
+            let deployFee = args.deployFee;
+            let completionCommission = args.completionCommission;
+
+            if (deployFee === undefined || completionCommission === undefined) {
+                const deployConfig = await getMarketplaceDeployConfig(context, 'multiple_domain_swap');
+                deployFee ??= parseRequiredBigInt(
+                    deployConfig.deploy_fee?.amount,
+                    'Marketplace config for "multiple_domain_swap" does not provide deploy_fee'
+                );
+                completionCommission ??= parseRequiredBigInt(
+                    deployConfig.completion_commission?.amount,
+                    'Marketplace config for "multiple_domain_swap" does not provide completion_commission'
+                );
+            }
 
             return prepareSingle(
                 'DeployDomainSwap',

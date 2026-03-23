@@ -1,15 +1,15 @@
 {
     "name": "@webdom/sdk",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "TypeScript SDK for Webdom agent API and contract transaction builders",
     "license": "Apache-2.0",
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/webdom-market/webdom-sdk.git"
+        "url": "git+https://github.com/webdom-market/sdk.git"
     },
-    "homepage": "https://github.com/webdom-market/webdom-sdk#readme",
+    "homepage": "https://github.com/webdom-market/sdk#readme",
     "bugs": {
-        "url": "https://github.com/webdom-market/webdom-sdk/issues"
+        "url": "https://github.com/webdom-market/sdk/issues"
     },
     "keywords": [
         "webdom",

@@ -1114,6 +1114,8 @@ npx @webdom/sdk get-offer --offer EQA-b0HZgkRYW13sRnsqqZYM95C5-ecmSW2aVYZvhJTwkD
 
 ## Transaction Builders
 
+`build-*` workflow commands and `sdk.tx.*` helpers intentionally stop at prepared message generation. To actually sign and broadcast, pass the resulting `messages` to a wallet tool such as `@ton/mcp@alpha`.
+
 ### Build A Fixed-Price Purchase Transaction
 
 ```bash
@@ -1135,6 +1137,30 @@ npx @webdom/sdk build-purchase-tx --sale-address EQCZrE2PauJVGz8d2Rh-0aoXDlJYr9l
   }
 }
 ```
+
+### Send The Prepared Transaction Through `@ton/mcp@alpha`
+
+The SDK output can be sent to TON without reshaping the `messages` array. Build the transaction, extract `.messages`, send it with `send_raw_transaction`, then poll by `normalizedHash`.
+
+```bash
+TX_JSON=$(npx @webdom/sdk build-purchase-tx --sale-address EQCZrE2PauJVGz8d2Rh-0aoXDlJYr9l6koX64pZDVJYogAuS --price 70000000000000)
+MESSAGES=$(echo "$TX_JSON" | jq -c '.messages')
+
+HASH=$(
+  npx -y @ton/mcp@alpha send_raw_transaction \
+    --messages "$MESSAGES" \
+  | jq -r '.normalizedHash'
+)
+
+npx -y @ton/mcp@alpha get_transaction_status --normalizedHash "$HASH"
+```
+
+If `MNEMONIC` or `PRIVATE_KEY` is not set, `@ton/mcp@alpha` uses the local TON config registry at `~/.config/ton/config.json`. In that mode you can add `--walletSelector <id|name|address>` to choose a specific wallet.
+
+More information:
+
+- `@ton/mcp` README: <https://github.com/ton-connect/kit/blob/main/packages/mcp/README.md>
+- install TON skills for an agent: `npx skills add ton-connect/kit/packages/mcp`
 
 ### Build A Secondary Auction Bid Transaction
 

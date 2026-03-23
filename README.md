@@ -6,10 +6,8 @@ TypeScript SDK for the [Webdom Agent API](https://webdom.market/api/docs/agent-a
 
 ```bash
 npm install -g @webdom/sdk
+npx skills add webdom-market/sdk
 ```
-
-The SDK expects a `fetch` implementation. In modern Node.js runtimes this usually means Node 18+.
-If your runtime does not provide `globalThis.fetch`, pass one explicitly to `createWebdomSdk({ fetch })`.
 
 ## Quick Start
 
@@ -148,7 +146,7 @@ Transaction builders are grouped by domain:
 - `sdk.tx.marketplace`
 - `sdk.tx.nft`
 
-Each builder returns TonConnect-ready messages:
+Each builder returns a `PreparedTransaction` with TonConnect-ready `messages`:
 
 ```ts
 const tx = await sdk.tx.sales.purchaseTonSimple({
@@ -163,6 +161,43 @@ Advanced tx helpers are also available via:
 ```ts
 import { createTxClient } from '@webdom/sdk/tx';
 ```
+
+### Sending Transactions With `@ton/mcp@alpha`
+
+The SDK only prepares transaction data. To actually sign and send that transaction to TON, pass `PreparedTransaction.messages` into the raw CLI command `@ton/mcp@alpha send_raw_transaction`.
+
+Minimal flow:
+
+1. Build the transaction with `webdom` or `sdk.tx.*`
+2. Take the `messages` array from the result
+3. Pass that array to `npx -y @ton/mcp@alpha send_raw_transaction --messages ...`
+4. Poll `get_transaction_status` with the returned `normalizedHash`
+
+Example:
+
+```bash
+export MNEMONIC="word1 word2 ..."
+
+TX_JSON=$(webdom build-purchase-tx --sale-address EQ... --price 70000000000000)
+MESSAGES=$(echo "$TX_JSON" | jq -c '.messages')
+
+HASH=$(
+  npx -y @ton/mcp@alpha send_raw_transaction \
+    --messages "$MESSAGES" \
+  | jq -r '.normalizedHash'
+)
+
+npx -y @ton/mcp@alpha get_transaction_status --normalizedHash "$HASH"
+```
+
+`send_raw_transaction` accepts the same message fields that the SDK already returns: `address`, `amount`, `payload`, and optional `stateInit`. The extra SDK fields such as `meta` and `queryId` are not part of the broadcast request.
+
+If `MNEMONIC` or `PRIVATE_KEY` is not set, `@ton/mcp@alpha` uses the local TON config registry at `~/.config/ton/config.json`. In that mode you can also pass `--walletSelector` to choose a specific wallet.
+
+Where to read more:
+
+- `@ton/mcp` README: <https://github.com/ton-connect/kit/blob/main/packages/mcp/README.md>
+- install TON skills for an agent: `npx skills add ton-connect/kit/packages/mcp`
 
 ## CLI
 
@@ -210,7 +245,7 @@ Defaults:
 - `--select path.to.field` extracts a nested value before printing
 - `--jsonl` emits arrays as one JSON object per line
 
-Use `webdom help <command>` for human help, `webdom schema <command>` for machine-readable metadata, or `webdom commands` to inspect the full command catalog.
+Use `webdom help <command>` for human help, `webdom schema <command>` for machine-readable metadata, or `webdom commands` to inspect the full command catalog. Yout can find more examples in [EXAMPLES.md](./EXAMPLES.md)
 
 ## Entry Points
 
@@ -223,3 +258,14 @@ The package uses a focused root export plus explicit advanced entrypoints:
 - `@webdom/sdk/contracts`: low-level contract helpers
 - `@webdom/sdk/types`: generated API schema types
 - `@webdom/sdk/cli`: CLI runner and command metadata
+
+## Rate Limits
+
+The Agent API applies rate limits to every endpoint.
+
+- authenticated requests: `5 RPS` with burst `20`, limited both per wallet and per client IP
+- unauthenticated requests: `1 RPS` per client IP
+
+When a limit is exceeded, the API returns `429 Too Many Requests` and includes standard retry metadata in headers such as `Retry-After`, `X-RateLimit-Limit`, `X-RateLimit-Remaining`, `X-RateLimit-Reset`, and `X-RateLimit-Scope`.
+
+If you need higher limits, contact `t.me/domainer`.
