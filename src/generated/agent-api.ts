@@ -227,6 +227,7 @@ export interface paths {
          *     - `marketplaces`: OR
          *     - `clubs`: OR
          *     - `dns_record_types`: AND
+         *     - `search` + `regex`: AND when both are provided.
          *     - `characters`: AND. The following combinations are invalid and return `400`:
          *       `idn_domains` + `exclude_punycode`,
          *       `digits_only` + `exclude_digits`,
@@ -1410,6 +1411,8 @@ export interface components {
         PriceTonMax: string;
         /** @description Optional inclusive lower bound for normalized TON price, in human-readable TON units such as `10.1`. */
         PriceTonMin: string;
+        /** @description Optional case-insensitive regular expression matched against the full domain name. When combined with `search`, both filters are applied. */
+        Regex: string;
         /** @description Required domain zone selector. Use `ton` for `.ton` domains or `t.me` for Telegram usernames. */
         RequiredDomainZone: "ton" | "t.me";
         /** @description Free-form search string interpreted by the target endpoint. */
@@ -1744,6 +1747,8 @@ export interface operations {
                 price_ton_max?: components["parameters"]["PriceTonMax"];
                 /** @description Optional inclusive lower bound for normalized TON price, in human-readable TON units such as `10.1`. */
                 price_ton_min?: components["parameters"]["PriceTonMin"];
+                /** @description Optional case-insensitive regular expression matched against the full domain name. When combined with `search`, both filters are applied. */
+                regex?: components["parameters"]["Regex"];
                 /** @description Free-form search string interpreted by the target endpoint. */
                 search?: components["parameters"]["Search"];
                 /** @description Domain ordering mode. Reuse any returned cursor only with the same sort value. For `current_price_ton.*`, `last_price_ton.*`, `last_sale_time.*`, `sale_created_at.*`, and `deal_ending_time.*`, rows without the sort key are always placed at the end of the result set (`nulls_last`), regardless of sort direction. */

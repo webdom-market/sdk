@@ -218,6 +218,7 @@ Workflow examples:
 
 ```bash
 webdom find-domain --query gold --limit 5
+webdom find-domain --regex '^gold.*\\.ton$' --limit 5
 webdom get-domain --domain example.ton
 webdom get-wallet-balances --address UQ...
 webdom build-purchase-tx --sale-address EQ... --price 1500000000
@@ -230,6 +231,7 @@ Low-level examples:
 
 ```bash
 webdom catalog.list-domains --search gold --limit 5
+webdom catalog.list-domains --regex '^gold.*\\.ton$' --limit 5
 webdom domains.get --domain-name example.ton
 webdom marketplace.config
 webdom auth.authenticate

@@ -210,6 +210,7 @@ export const WORKFLOW_COMMANDS: CliCommandDefinition[] = [
         aliases: ['find-domains'],
         params: [
             { name: 'query', type: 'string', aliases: ['search'], description: 'Free-text search query.' },
+            { name: 'regex', type: 'string', description: 'Case-insensitive regex matched against the full domain name.' },
             { name: 'zone', type: 'string', aliases: ['domain_zone'], enum: DOMAIN_ZONES, description: 'Domain zone.' },
             cloneParam(LIMIT_PARAM),
             cloneParam(CURSOR_PARAM),
@@ -219,6 +220,7 @@ export const WORKFLOW_COMMANDS: CliCommandDefinition[] = [
         ],
         examples: [
             'webdom find-domain --query gold --zone ton --limit 5',
+            'webdom find-domain --regex \'^gold.*\\\\.ton$\' --limit 5',
             'webdom find-domain --owner-address UQ... --limit 20'
         ],
         outputDescription: 'Paginated domain search results.',
@@ -227,6 +229,7 @@ export const WORKFLOW_COMMANDS: CliCommandDefinition[] = [
         mapInput(input) {
             return {
                 search: input.query ?? input.search,
+                regex: input.regex,
                 domain_zone: input.zone ?? input.domain_zone,
                 limit: input.limit,
                 cursor: input.cursor,

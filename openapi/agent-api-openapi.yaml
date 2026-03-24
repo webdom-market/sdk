@@ -167,6 +167,7 @@ paths:
         - `marketplaces`: OR
         - `clubs`: OR
         - `dns_record_types`: AND
+        - `search` + `regex`: AND when both are provided.
         - `characters`: AND. The following combinations are invalid and return `400`:
           `idn_domains` + `exclude_punycode`,
           `digits_only` + `exclude_digits`,
@@ -175,6 +176,7 @@ paths:
           `hyphen_separated` + `exclude_hyphens`.
       parameters:
         - $ref: '#/components/parameters/Search'
+        - $ref: '#/components/parameters/Regex'
         - $ref: '#/components/parameters/DomainZone'
         - name: name_length_min
           in: query
@@ -1129,6 +1131,13 @@ components:
       description: Free-form search string interpreted by the target endpoint.
       schema:
         type: string
+    Regex:
+      name: regex
+      in: query
+      description: Optional case-insensitive regular expression matched against the full domain name. When combined with `search`, both filters are applied.
+      schema:
+        type: string
+        minLength: 1
     DomainZone:
       name: domain_zone
       in: query

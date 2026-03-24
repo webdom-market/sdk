@@ -34,6 +34,7 @@ export const API_COMMANDS: CliCommandDefinition[] = [
         description: 'Fetch the domains catalog with all supported filters.',
         params: [
             { name: 'search', type: 'string', description: 'Free-text search query.' },
+            { name: 'regex', type: 'string', description: 'Case-insensitive regex matched against the full domain name.' },
             cloneParam(DOMAIN_ZONE_PARAM),
             { name: 'name_length_min', type: 'number', description: 'Minimum domain name length.' },
             { name: 'name_length_max', type: 'number', description: 'Maximum domain name length.' },
@@ -56,6 +57,7 @@ export const API_COMMANDS: CliCommandDefinition[] = [
         ],
         examples: [
             'webdom catalog.list-domains --search gold --limit 5',
+            'webdom catalog.list-domains --regex \'^gold.*\\\\.ton$\' --limit 5',
             'webdom catalog.list-domains --states for_sale --states for_secondary_auction --limit 10'
         ],
         outputDescription: 'Paginated domains catalog response.',

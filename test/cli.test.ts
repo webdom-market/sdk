@@ -1984,7 +1984,9 @@ describe('cli', () => {
     });
 
     it('supports jsonl output for selected arrays', async () => {
+        const seenUrls: string[] = [];
         globalThis.fetch = async (input) => {
+            seenUrls.push(String(input));
             if (String(input).includes('/catalog/domains')) {
                 return jsonResponse({
                     success: true,
@@ -2017,6 +2019,39 @@ describe('cli', () => {
         expect(exitCode).toBe(0);
         expect(stderr).toEqual([]);
         expect(stdout).toEqual(['{"name":"gold.ton"}\n', '{"name":"silver.ton"}\n']);
+        expect(seenUrls[0]).toContain('/catalog/domains?search=ton');
+    });
+
+    it('passes regex through find-domain workflow commands', async () => {
+        const seenUrls: string[] = [];
+        globalThis.fetch = async (input) => {
+            seenUrls.push(String(input));
+            return jsonResponse({
+                success: true,
+                meta: {
+                    request_id: 'req-domains'
+                },
+                page_info: {
+                    next_cursor: null,
+                    has_more: false
+                },
+                data: {
+                    items: []
+                }
+            });
+        };
+
+        const stdout: string[] = [];
+        const stderr: string[] = [];
+        const exitCode = await runCli(['find-domain', '--regex', '^gold.*\\.ton$', '--limit', '2'], {
+            stdout: (value) => stdout.push(value),
+            stderr: (value) => stderr.push(value)
+        });
+
+        expect(exitCode).toBe(0);
+        expect(stderr).toEqual([]);
+        expect(stdout.join('')).toContain('"items":[]');
+        expect(seenUrls[0]).toContain('/catalog/domains?regex=%5Egold.*%5C.ton%24&limit=2');
     });
 
     it('preserves string numeric query params without lossy coercion', async () => {

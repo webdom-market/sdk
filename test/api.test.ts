@@ -326,13 +326,14 @@ describe('api namespaces', () => {
 
         const domains = await sdk.api.catalog.listDomains({
             search: 'gold',
+            regex: '^gold.*\\.ton$',
             limit: 1
         });
         const rawDomain = await sdk.raw.domains.get({
             domain_name: 'gold.ton'
         });
 
-        expect(seenUrls[0]).toContain('/catalog/domains?search=gold&limit=1');
+        expect(seenUrls[0]).toContain('/catalog/domains?search=gold&regex=%5Egold.*%5C.ton%24&limit=1');
         expect(domains.items[0]?.name).toBe('gold.ton');
         expect(domains.items[0]?.relevance_score).toBe('287385951250884900');
         expect(domains.pageInfo.nextCursor).toBe('cursor-2');

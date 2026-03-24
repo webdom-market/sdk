@@ -150,6 +150,7 @@ npx @webdom/sdk schema find-domain --pretty
   },
   "examples": [
     "webdom find-domain --query gold --zone ton --limit 5",
+    "webdom find-domain --regex '^gold.*\\\\.ton$' --limit 5",
     "webdom find-domain --owner-address UQ... --limit 20"
   ],
   "global_options": [
@@ -854,6 +855,7 @@ npx @webdom/sdk list-top-sales --zone ton --segment secondary --limit 1 --pretty
 
 ```bash
 npx @webdom/sdk catalog.list-domains --search auto --domain-zone ton --sort relevance.desc --limit 2 --pretty
+npx @webdom/sdk catalog.list-domains --regex '^auto.*\\.ton$' --limit 2 --pretty
 ```
 
 ```json
