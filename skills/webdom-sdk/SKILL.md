@@ -1,6 +1,6 @@
 ---
 name: webdom-sdk
-description: Use when the user wants to search .ton or .t.me domains, inspect domain details, find deals, buy a domain, bid in an auction, accept an offer, link a wallet to a domain, check domain or user activity, analyze Webdom market data, or prepare and send domain-related transactions on TON blockchain. Uses the Webdom CLI and SDK under the hood, including transaction broadcasting via external wallet tools such as @ton/mcp@alpha.
+description: Use when the user wants to understand TON DNS, explain what .ton or .t.me domains are for, assess whether a domain is valuable, analyze naming quality or marketability, search .ton or .t.me domains, inspect domain details, find deals, buy a domain, bid in an auction, accept an offer, link a wallet to a domain, check domain or user activity, analyze Webdom market data, or prepare and send domain-related transactions on TON blockchain. Uses the Webdom CLI and SDK under the hood, including transaction broadcasting via external wallet tools such as @ton/mcp@alpha.
 ---
 
 # Webdom SDK
@@ -8,6 +8,19 @@ description: Use when the user wants to search .ton or .t.me domains, inspect do
 Use this skill for Webdom marketplace tasks such as finding domains, buying them, bidding, accepting offers, linking wallets, checking history, or preparing sale and purchase flows.
 
 Prefer the workflow CLI for operational tasks. Prefer the TypeScript SDK surface only when the user wants code, integration help, or SDK changes.
+
+## Domain Context
+
+This skill covers two different needs:
+
+- conceptual TON DNS questions
+- operational Webdom marketplace workflows
+
+If the user asks what TON DNS is, why domains matter, how `.ton` differs from `.t.me`, what makes a name valuable, how renewals affect the market, or how Webdom fits into the broader ecosystem, load the relevant reference before answering:
+
+- TON DNS basics and mental model: `references/ton-dns-primer.md`
+- broader ecosystem, market structure, and platform roles: `references/ton-dns-ecosystem.md`
+- valuation and naming quality heuristics: `references/domain-valuation.md`
 
 ## Fast Path
 
