@@ -8,6 +8,9 @@ TON DNS is one of the [clearest](https://webdom.market/analytics) on-chain narra
 
 This repository provides AI agents and developers with seamless access to the TON DNS ecosystem. With these tools, agents can easily discover domains, check ownership and market status, authenticate using TON wallets, and prepare transactions for buying, selling, bidding, renewing, and managing domains — enabling all the actions of a real user.
 
+## Short demo
+
+https://github.com/user-attachments/assets/846cbfd2-012b-46e0-97d8-553a401d174b
 
 ## Installation
 
