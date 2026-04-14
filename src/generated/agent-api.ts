@@ -244,6 +244,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/catalog/domains/available-labels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search available .ton labels
+         * @description Searches the prepared availability snapshot for currently unminted `.ton` labels.
+         *     Cursor contract:
+         *     - `cursor` is an opaque server-generated continuation token.
+         *     - The token binds to the normalized regex, sort order, length filters, boolean filters, first-character filter, and the current snapshot token.
+         *     - Reusing a cursor with different filters or after the snapshot is rebuilt returns `400`.
+         *     - The end of the feed is indicated by `page_info.has_more = false` and `page_info.next_cursor = null`.
+         */
+        get: operations["listAvailableDomainLabels"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/deals/{deal_address}": {
         parameters: {
             query?: never;
@@ -629,6 +654,13 @@ export interface components {
         };
         AgentApiTokenEnvelope: components["schemas"]["BaseEnvelope"] & {
             data: components["schemas"]["AgentApiToken"];
+        };
+        AvailableLabelListEnvelope: components["schemas"]["BaseEnvelope"] & {
+            data: {
+                /** @description Available `.ton` labels without the suffix. */
+                items: string[];
+            };
+            page_info: components["schemas"]["PageInfo"];
         };
         BackResolveEnvelope: components["schemas"]["BaseEnvelope"] & {
             data: components["schemas"]["BackResolveResult"];
@@ -1356,6 +1388,15 @@ export interface components {
                 "application/json": components["schemas"]["ErrorEnvelope"];
             };
         };
+        /** @description Required backend dependency is temporarily unavailable */
+        ServiceUnavailable: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["ErrorEnvelope"];
+            };
+        };
         /** @description Rate limit exceeded */
         TooManyRequests: {
             headers: {
@@ -1774,6 +1815,58 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             429: components["responses"]["TooManyRequests"];
             500: components["responses"]["InternalError"];
+        };
+    };
+    listAvailableDomainLabels: {
+        parameters: {
+            query: {
+                /**
+                 * @description Opaque server-generated continuation token for cursor pagination.
+                 *     For offset-based feeds in this API, the token binds to the endpoint ordering and, where applicable, to the explicit `sort` value.
+                 */
+                cursor?: components["parameters"]["Cursor"];
+                /** @description Optional first-character filter. Must be a single lowercase ASCII letter or digit. */
+                first_char?: string;
+                /** @description Filter by whether the label contains at least one digit. */
+                has_digit?: boolean;
+                /** @description Filter by whether the label contains a hyphen. */
+                has_hyphen?: boolean;
+                /** @description Filter by whether the label contains at least one ASCII letter. */
+                has_letter?: boolean;
+                /** @description Filter by whether the label is punycode-encoded (`xn--` prefix). */
+                is_idn?: boolean;
+                /** @description Filter by whether the label reads the same forward and backward. */
+                is_palindrome?: boolean;
+                /** @description Optional page size. Default is `50`; maximum is `100`. */
+                limit?: components["parameters"]["Limit"];
+                /** @description Maximum label length. */
+                max_len?: number;
+                /** @description Minimum label length. */
+                min_len?: number;
+                /** @description Regex pattern for the label only, without the `.ton` suffix. Slash delimiters are accepted and normalized before execution. */
+                regex: string;
+                /** @description Lexicographic sort direction for the returned labels. */
+                sort_order?: "asc" | "desc";
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Available label search results */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AvailableLabelListEnvelope"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            429: components["responses"]["TooManyRequests"];
+            500: components["responses"]["InternalError"];
+            503: components["responses"]["ServiceUnavailable"];
         };
     };
     getDeal: {
@@ -2280,6 +2373,7 @@ export interface operations {
 export type AddressObject = components["schemas"]["AddressObject"];
 export type AgentApiToken = components["schemas"]["AgentApiToken"];
 export type AgentApiTokenEnvelope = components["schemas"]["AgentApiTokenEnvelope"];
+export type AvailableLabelListEnvelope = components["schemas"]["AvailableLabelListEnvelope"];
 export type BackResolveEnvelope = components["schemas"]["BackResolveEnvelope"];
 export type BackResolveResult = components["schemas"]["BackResolveResult"];
 export type BestOfferEnvelope = components["schemas"]["BestOfferEnvelope"];
@@ -2392,6 +2486,7 @@ export type GetMarketOverviewParams = MergeOperationParams<operations["getMarket
 export type GetOfferParams = MergeOperationParams<operations["getOffer"]["parameters"]["path"], operations["getOffer"]["parameters"]["query"]>;
 export type GetUserParams = MergeOperationParams<operations["getUser"]["parameters"]["path"], operations["getUser"]["parameters"]["query"]>;
 export type ListAuctionBidsParams = MergeOperationParams<operations["listAuctionBids"]["parameters"]["path"], operations["listAuctionBids"]["parameters"]["query"]>;
+export type ListAvailableDomainLabelsParams = MergeOperationParams<operations["listAvailableDomainLabels"]["parameters"]["path"], operations["listAvailableDomainLabels"]["parameters"]["query"]>;
 export type ListDealBidsParams = MergeOperationParams<operations["listDealBids"]["parameters"]["path"], operations["listDealBids"]["parameters"]["query"]>;
 export type ListDealsParams = MergeOperationParams<operations["listDeals"]["parameters"]["path"], operations["listDeals"]["parameters"]["query"]>;
 export type ListDomainsParams = MergeOperationParams<operations["listDomains"]["parameters"]["path"], operations["listDomains"]["parameters"]["query"]>;

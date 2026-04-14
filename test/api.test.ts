@@ -4,6 +4,42 @@ import { WebdomApiError } from '../src/api';
 import { createInMemoryTokenStorage, createWebdomSdk } from '../src';
 import { TEST_ADDRESS, TEST_PUBLIC_KEY, jsonResponse } from './helpers';
 
+const CATALOG_CASES = [
+    {
+        name: 'available domain labels',
+        expectedUrl: 'https://webdom.market/api/agent/v1/catalog/domains/available-labels?regex=%5E%5Ba-z%5D%7B4%7D%24&limit=2&has_letter=true',
+        highLevelCall: (sdk: ReturnType<typeof createWebdomSdk>) => sdk.api.catalog.listAvailableDomainLabels({
+            regex: '^[a-z]{4}$',
+            limit: 2,
+            has_letter: true
+        }),
+        rawCall: (sdk: ReturnType<typeof createWebdomSdk>) => sdk.raw.catalog.listAvailableDomainLabels({
+            regex: '^[a-z]{4}$',
+            limit: 2,
+            has_letter: true
+        }),
+        response: {
+            success: true,
+            meta: {
+                request_id: 'req-available-labels',
+                api_version: '2026-03-22'
+            },
+            page_info: {
+                next_cursor: 'cursor-available-2',
+                has_more: true
+            },
+            data: {
+                items: ['ably', 'atom']
+            }
+        },
+        assertHighLevel(result: any) {
+            expect(result.items).toEqual(['ably', 'atom']);
+            expect(result.pageInfo.nextCursor).toBe('cursor-available-2');
+            expect(result.pageInfo.hasMore).toBe(true);
+        }
+    }
+] as const;
+
 const ANALYTICS_AND_MARKETPLACE_CASES = [
     {
         name: 'marketplace config',
@@ -362,6 +398,28 @@ describe('api namespaces', () => {
         testCase.assertHighLevel(result);
         expect(rawResult.meta.request_id).toBe(testCase.response.meta.request_id);
         expect(rawResult.data).toEqual(testCase.response.data);
+    });
+
+    it.each(CATALOG_CASES)('covers catalog %s via high-level and raw namespaces', async (testCase) => {
+        const seenUrls: string[] = [];
+        const sdk = createWebdomSdk({
+            fetch: async (input) => {
+                seenUrls.push(String(input));
+                return jsonResponse(testCase.response);
+            }
+        });
+
+        const result = await testCase.highLevelCall(sdk);
+        const rawResult = await testCase.rawCall(sdk);
+
+        expect(seenUrls).toEqual([
+            testCase.expectedUrl,
+            testCase.expectedUrl
+        ]);
+        testCase.assertHighLevel(result);
+        expect(rawResult.meta.request_id).toBe(testCase.response.meta.request_id);
+        expect(rawResult.data.items).toEqual(testCase.response.data.items);
+        expect(rawResult.page_info).toEqual(testCase.response.page_info);
     });
 
     it('persists tokens through the auth client and sends auth headers on protected calls', async () => {

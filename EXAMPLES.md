@@ -344,6 +344,29 @@ npx @webdom/sdk find-domain --query auto --zone ton --limit 1 --pretty
 }
 ```
 
+### Find Available Labels For Minting
+
+```bash
+npx @webdom/sdk find-available-labels --regex '^[a-z]{4}$' --limit 2 --has-letter true --pretty
+```
+
+```json
+{
+  "items": [
+    "ably",
+    "atom"
+  ],
+  "pageInfo": {
+    "nextCursor": "cursor-available-2",
+    "hasMore": true
+  },
+  "meta": {
+    "requestId": "req-available-labels",
+    "apiVersion": "2026-03-22"
+  }
+}
+```
+
 ### Fetch Full Domain Details
 
 ```bash
@@ -856,6 +879,7 @@ npx @webdom/sdk list-top-sales --zone ton --segment secondary --limit 1 --pretty
 ```bash
 npx @webdom/sdk catalog.list-domains --search auto --domain-zone ton --sort relevance.desc --limit 2 --pretty
 npx @webdom/sdk catalog.list-domains --regex '^auto.*\\.ton$' --limit 2 --pretty
+npx @webdom/sdk catalog.list-available-domain-labels --regex '^[a-z]{4}$' --limit 2 --has-letter true --pretty
 ```
 
 ```json
@@ -977,6 +1001,25 @@ npx @webdom/sdk catalog.list-domains --regex '^auto.*\\.ton$' --limit 2 --pretty
   "meta": {
     "requestId": "7e1e4276-f4da-4a66-b092-093210217a80",
     "apiVersion": "v1"
+  }
+}
+```
+
+Available-label search returns plain label strings instead of full domain objects:
+
+```json
+{
+  "items": [
+    "ably",
+    "atom"
+  ],
+  "pageInfo": {
+    "nextCursor": "cursor-available-2",
+    "hasMore": true
+  },
+  "meta": {
+    "requestId": "req-available-labels",
+    "apiVersion": "2026-03-22"
   }
 }
 ```

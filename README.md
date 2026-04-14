@@ -34,6 +34,14 @@ const domains = await sdk.api.catalog.listDomains({
 
 console.log(domains.items.map((domain) => domain.name));
 
+const labels = await sdk.api.catalog.listAvailableDomainLabels({
+    regex: '^[a-z]{4}$',
+    limit: 5,
+    has_letter: true
+});
+
+console.log(labels.items);
+
 const details = await sdk.api.domains.get({
     domain_name: 'example.ton'
 });
@@ -131,6 +139,12 @@ High-level namespaces unwrap `data`, `page_info`, and `meta`:
 const result = await sdk.api.catalog.listDomains({ limit: 10 });
 console.log(result.items, result.pageInfo, result.meta);
 
+const availableLabels = await sdk.api.catalog.listAvailableDomainLabels({
+    regex: '^gold',
+    limit: 10
+});
+console.log(availableLabels.items, availableLabels.pageInfo, availableLabels.meta);
+
 const marketplaceConfig = await sdk.api.marketplace.getConfig();
 console.log(marketplaceConfig.deploy_configs);
 ```
@@ -140,6 +154,12 @@ Raw namespaces preserve the original API envelope:
 ```ts
 const envelope = await sdk.raw.catalog.listDomains({ limit: 10 });
 console.log(envelope.data.items, envelope.meta.request_id);
+
+const rawAvailableLabels = await sdk.raw.catalog.listAvailableDomainLabels({
+    regex: '^[a-z]{4}$',
+    limit: 10
+});
+console.log(rawAvailableLabels.data.items, rawAvailableLabels.page_info);
 
 const rawMarketplaceConfig = await sdk.raw.marketplace.getConfig();
 console.log(rawMarketplaceConfig.data.deploy_configs);
@@ -222,6 +242,8 @@ Workflow examples:
 ```bash
 webdom find-domain --query gold --limit 5
 webdom find-domain --regex '^gold.*\\.ton$' --limit 5
+webdom find-available-labels --regex '^[a-z]{4}$' --limit 5
+webdom find-available-labels --regex '^ton' --has-letter true --first-char t
 webdom get-domain --domain example.ton
 webdom get-wallet-balances --address UQ...
 webdom build-purchase-tx --sale-address EQ... --price 1500000000
@@ -235,6 +257,7 @@ Low-level examples:
 ```bash
 webdom catalog.list-domains --search gold --limit 5
 webdom catalog.list-domains --regex '^gold.*\\.ton$' --limit 5
+webdom catalog.list-available-domain-labels --regex '^[a-z]{4}$' --limit 5
 webdom domains.get --domain-name example.ton
 webdom marketplace.config
 webdom auth.authenticate

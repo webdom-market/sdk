@@ -65,6 +65,33 @@ export const API_COMMANDS: CliCommandDefinition[] = [
         sdkPath: ['api', 'catalog', 'listDomains']
     }),
     sdkCommand({
+        name: 'catalog.list-available-domain-labels',
+        layer: 'api',
+        summary: 'List available .ton labels.',
+        description: 'Search the mint availability snapshot for currently unminted `.ton` labels.',
+        params: [
+            { name: 'regex', type: 'string', required: true, description: 'Regex pattern for the label only, without the `.ton` suffix.' },
+            { name: 'sort_order', type: 'string', enum: ['asc', 'desc'], description: 'Lexicographic sort direction.' },
+            cloneParam(CURSOR_PARAM),
+            cloneParam(LIMIT_PARAM),
+            { name: 'min_len', type: 'number', description: 'Minimum label length.' },
+            { name: 'max_len', type: 'number', description: 'Maximum label length.' },
+            { name: 'has_digit', type: 'boolean', description: 'Filter by whether the label contains at least one digit.' },
+            { name: 'has_letter', type: 'boolean', description: 'Filter by whether the label contains at least one ASCII letter.' },
+            { name: 'has_hyphen', type: 'boolean', description: 'Filter by whether the label contains a hyphen.' },
+            { name: 'is_idn', type: 'boolean', description: 'Filter by whether the label is punycode-encoded.' },
+            { name: 'is_palindrome', type: 'boolean', description: 'Filter by whether the label reads the same forward and backward.' },
+            { name: 'first_char', type: 'string', description: 'Optional first-character filter.' }
+        ],
+        examples: [
+            'webdom catalog.list-available-domain-labels --regex \'^[a-z]{4}$\' --limit 10',
+            'webdom catalog.list-available-domain-labels --regex \'^gold\' --has-letter true --sort-order asc'
+        ],
+        outputDescription: 'Paginated available label search results.',
+        outputSchema: PAGINATED_OUTPUT_SCHEMA,
+        sdkPath: ['api', 'catalog', 'listAvailableDomainLabels']
+    }),
+    sdkCommand({
         name: 'catalog.list-deals',
         layer: 'api',
         summary: 'List deals catalog.',

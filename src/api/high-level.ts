@@ -1,5 +1,6 @@
 import type {
     ListAuctionBidsParams,
+    ListAvailableDomainLabelsParams,
     ListDealBidsParams,
     ListDealsParams,
     ListDomainTransactionsParams,
@@ -31,6 +32,9 @@ export function createAgentApi(raw: RawAgentApi) {
         catalog: {
             async listDomains(query: ListDomainsParams = {}) {
                 return unwrapPaginated(await raw.catalog.listDomains(query));
+            },
+            async listAvailableDomainLabels(query: ListAvailableDomainLabelsParams) {
+                return unwrapPaginated(await raw.catalog.listAvailableDomainLabels(query));
             },
             async listDeals(query: ListDealsParams = {}) {
                 return unwrapPaginated(await raw.catalog.listDeals(query));

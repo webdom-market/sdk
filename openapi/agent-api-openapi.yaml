@@ -294,6 +294,99 @@ paths:
         '429':
           $ref: '#/components/responses/TooManyRequests'
 
+  /catalog/domains/available-labels:
+    get:
+      tags: [Catalog]
+      operationId: listAvailableDomainLabels
+      summary: Search available .ton labels
+      description: |
+        Searches the prepared availability snapshot for currently unminted `.ton` labels.
+        Cursor contract:
+        - `cursor` is an opaque server-generated continuation token.
+        - The token binds to the normalized regex, sort order, length filters, boolean filters, first-character filter, and the current snapshot token.
+        - Reusing a cursor with different filters or after the snapshot is rebuilt returns `400`.
+        - The end of the feed is indicated by `page_info.has_more = false` and `page_info.next_cursor = null`.
+      parameters:
+        - name: regex
+          in: query
+          required: true
+          description: Regex pattern for the label only, without the `.ton` suffix. Slash delimiters are accepted and normalized before execution.
+          schema:
+            type: string
+        - name: sort_order
+          in: query
+          description: Lexicographic sort direction for the returned labels.
+          schema:
+            type: string
+            enum: [asc, desc]
+            default: asc
+        - $ref: '#/components/parameters/Cursor'
+        - $ref: '#/components/parameters/Limit'
+        - name: min_len
+          in: query
+          description: Minimum label length.
+          schema:
+            type: integer
+            minimum: 4
+            maximum: 126
+            default: 4
+        - name: max_len
+          in: query
+          description: Maximum label length.
+          schema:
+            type: integer
+            minimum: 4
+            maximum: 126
+            default: 126
+        - name: has_digit
+          in: query
+          description: Filter by whether the label contains at least one digit.
+          schema:
+            type: boolean
+        - name: has_letter
+          in: query
+          description: Filter by whether the label contains at least one ASCII letter.
+          schema:
+            type: boolean
+        - name: has_hyphen
+          in: query
+          description: Filter by whether the label contains a hyphen.
+          schema:
+            type: boolean
+        - name: is_idn
+          in: query
+          description: Filter by whether the label is punycode-encoded (`xn--` prefix).
+          schema:
+            type: boolean
+        - name: is_palindrome
+          in: query
+          description: Filter by whether the label reads the same forward and backward.
+          schema:
+            type: boolean
+        - name: first_char
+          in: query
+          description: Optional first-character filter. Must be a single lowercase ASCII letter or digit.
+          schema:
+            type: string
+            minLength: 1
+            maxLength: 1
+            pattern: '^[a-z0-9]$'
+      responses:
+        '200':
+          description: Available label search results
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvailableLabelListEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '429':
+          $ref: '#/components/responses/TooManyRequests'
+
   /catalog/deals:
     get:
       tags: [Catalog]
@@ -1249,6 +1342,12 @@ components:
             $ref: '#/components/schemas/ErrorEnvelope'
     InternalError:
       description: Internal server error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    ServiceUnavailable:
+      description: Required backend dependency is temporarily unavailable
       content:
         application/json:
           schema:
@@ -3098,6 +3197,24 @@ components:
                   type: array
                   items:
                     $ref: '#/components/schemas/Domain'
+              required: [items]
+            page_info:
+              $ref: '#/components/schemas/PageInfo'
+          required: [data, page_info]
+
+    AvailableLabelListEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/BaseEnvelope'
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                items:
+                  type: array
+                  description: Available `.ton` labels without the suffix.
+                  items:
+                    type: string
               required: [items]
             page_info:
               $ref: '#/components/schemas/PageInfo'

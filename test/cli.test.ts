@@ -11,6 +11,30 @@ import { prepareCommandInput } from '../src/cli-lib/runtime/input';
 import { resolveCliCommand } from '../src/cli-lib/registry';
 import { TEST_ADDRESS, TEST_PRIVATE_KEY, TEST_PUBLIC_KEY, jsonResponse, trackTempPath } from './helpers';
 
+const CATALOG_COMMAND_CASES = [
+    {
+        name: 'find-available-labels',
+        args: ['find-available-labels', '--regex', '^[a-z]{4}$', '--limit', '2', '--has-letter', 'true'],
+        expectedUrl: 'https://webdom.market/api/agent/v1/catalog/domains/available-labels?regex=%5E%5Ba-z%5D%7B4%7D%24&limit=2&has_letter=true',
+        response: {
+            success: true,
+            meta: { request_id: 'req-available-labels', api_version: '2026-03-22' },
+            page_info: {
+                next_cursor: 'cursor-available-2',
+                has_more: true
+            },
+            data: {
+                items: ['ably', 'atom']
+            }
+        },
+        assertOutput(output: any) {
+            expect(output.items).toEqual(['ably', 'atom']);
+            expect(output.pageInfo.nextCursor).toBe('cursor-available-2');
+            expect(output.pageInfo.hasMore).toBe(true);
+        }
+    }
+] as const;
+
 const ANALYTICS_AND_MARKETPLACE_COMMAND_CASES = [
     {
         name: 'analytics.market-overview',
@@ -271,6 +295,26 @@ describe('cli', () => {
     });
 
     it.each(ANALYTICS_AND_MARKETPLACE_COMMAND_CASES)('covers %s command routing and output', async (testCase) => {
+        const seenUrls: string[] = [];
+        globalThis.fetch = async (input) => {
+            seenUrls.push(String(input));
+            return jsonResponse(testCase.response);
+        };
+
+        const stdout: string[] = [];
+        const stderr: string[] = [];
+        const exitCode = await runCli(testCase.args as string[], {
+            stdout: (value) => stdout.push(value),
+            stderr: (value) => stderr.push(value)
+        });
+
+        expect(exitCode).toBe(0);
+        expect(stderr).toEqual([]);
+        expect(seenUrls).toEqual([testCase.expectedUrl]);
+        testCase.assertOutput(JSON.parse(stdout.join('')));
+    });
+
+    it.each(CATALOG_COMMAND_CASES)('covers %s command routing and output', async (testCase) => {
         const seenUrls: string[] = [];
         globalThis.fetch = async (input) => {
             seenUrls.push(String(input));

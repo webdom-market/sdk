@@ -240,6 +240,50 @@ export const WORKFLOW_COMMANDS: CliCommandDefinition[] = [
         }
     }),
     sdkCommand({
+        name: 'find-available-labels',
+        layer: 'workflow',
+        summary: 'Search available .ton labels.',
+        description: 'Workflow wrapper around the mint availability search endpoint.',
+        aliases: ['find-available-domain-labels', 'find-mint-labels'],
+        params: [
+            { name: 'regex', type: 'string', required: true, description: 'Regex pattern for the label only, without the `.ton` suffix.' },
+            cloneParam(LIMIT_PARAM),
+            cloneParam(CURSOR_PARAM),
+            { name: 'sort_order', type: 'string', enum: ['asc', 'desc'], description: 'Lexicographic sort direction.' },
+            { name: 'min_len', type: 'number', description: 'Minimum label length.' },
+            { name: 'max_len', type: 'number', description: 'Maximum label length.' },
+            { name: 'has_digit', type: 'boolean', description: 'Filter by whether the label contains at least one digit.' },
+            { name: 'has_letter', type: 'boolean', description: 'Filter by whether the label contains at least one ASCII letter.' },
+            { name: 'has_hyphen', type: 'boolean', description: 'Filter by whether the label contains a hyphen.' },
+            { name: 'is_idn', type: 'boolean', description: 'Filter by whether the label is punycode-encoded.' },
+            { name: 'is_palindrome', type: 'boolean', description: 'Filter by whether the label reads the same forward and backward.' },
+            { name: 'first_char', type: 'string', description: 'Optional first-character filter.' }
+        ],
+        examples: [
+            'webdom find-available-labels --regex \'^[a-z]{4}$\' --limit 10',
+            'webdom find-available-labels --regex \'^ton\' --has-letter true --first-char t'
+        ],
+        outputDescription: 'Paginated available label search results.',
+        outputSchema: PAGINATED_OUTPUT_SCHEMA,
+        sdkPath: ['api', 'catalog', 'listAvailableDomainLabels'],
+        mapInput(input) {
+            return {
+                regex: input.regex,
+                limit: input.limit,
+                cursor: input.cursor,
+                sort_order: input.sort_order,
+                min_len: input.min_len,
+                max_len: input.max_len,
+                has_digit: input.has_digit,
+                has_letter: input.has_letter,
+                has_hyphen: input.has_hyphen,
+                is_idn: input.is_idn,
+                is_palindrome: input.is_palindrome,
+                first_char: input.first_char
+            };
+        }
+    }),
+    sdkCommand({
         name: 'find-deal',
         layer: 'workflow',
         summary: 'Search deals with common filters.',
