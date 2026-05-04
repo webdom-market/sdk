@@ -81,11 +81,13 @@ jobs:
                   fi
 
             - name: Publish to npm with token
+              id: publish_with_token
               if: ${{ env.NPM_TOKEN != '' }}
+              continue-on-error: true
               run: npm publish --access public
               env:
                   NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}
 
             - name: Publish to npm with trusted publishing
-              if: ${{ env.NPM_TOKEN == '' }}
+              if: ${{ env.NPM_TOKEN == '' || steps.publish_with_token.outcome == 'failure' }}
               run: npm publish --access public
