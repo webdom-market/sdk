@@ -32,9 +32,6 @@ jobs:
                   registry-url: 'https://registry.npmjs.org'
                   cache: npm
 
-            - name: Upgrade npm for trusted publishing compatibility
-              run: npm install -g npm@latest
-
             - name: Show tool versions
               run: |
                   node --version
