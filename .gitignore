@@ -29,3 +29,5 @@ dist-ssr
 !.env.example
 
 yarn.lock
+.omx/
+AGENTS.md

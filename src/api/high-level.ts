@@ -34,7 +34,20 @@ export function createAgentApi(raw: RawAgentApi) {
                 return unwrapPaginated(await raw.catalog.listDomains(query));
             },
             async listAvailableDomainLabels(query: ListAvailableDomainLabelsParams) {
-                return unwrapPaginated(await raw.catalog.listAvailableDomainLabels(query));
+                const payload = await raw.catalog.listAvailableDomainLabels(query);
+                return {
+                    items: payload.data.items,
+                    labels: payload.data.items.map((item) => item.label),
+                    filterOptions: payload.data.filter_options,
+                    pageInfo: {
+                        nextCursor: payload.page_info.next_cursor,
+                        hasMore: payload.page_info.has_more,
+                    },
+                    meta: {
+                        requestId: payload.meta.request_id,
+                        apiVersion: payload.meta.api_version,
+                    },
+                };
             },
             async listDeals(query: ListDealsParams = {}) {
                 return unwrapPaginated(await raw.catalog.listDeals(query));
