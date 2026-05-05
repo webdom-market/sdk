@@ -24,11 +24,40 @@ const CATALOG_COMMAND_CASES = [
                 has_more: true
             },
             data: {
-                items: ['ably', 'atom']
+                items: [
+                    {
+                        label: 'ably',
+                        category: 'Business',
+                        tags: ['eth_minted', 'top_100_web2']
+                    },
+                    {
+                        label: 'atom',
+                        category: null,
+                        tags: []
+                    }
+                ],
+                filter_options: {
+                    tags: [
+                        { value: 'eth_minted', label: '.eth minted' },
+                        { value: 'top_100_web2', label: 'TOP-100 WEB2' }
+                    ],
+                    categories: ['Business']
+                }
             }
         },
         assertOutput(output: any) {
-            expect(output.items).toEqual(['ably', 'atom']);
+            expect(output.items).toEqual([
+                { label: 'ably', category: 'Business', tags: ['eth_minted', 'top_100_web2'] },
+                { label: 'atom', category: null, tags: [] }
+            ]);
+            expect(output.labels).toEqual(['ably', 'atom']);
+            expect(output.filterOptions).toEqual({
+                tags: [
+                    { value: 'eth_minted', label: '.eth minted' },
+                    { value: 'top_100_web2', label: 'TOP-100 WEB2' }
+                ],
+                categories: ['Business']
+            });
             expect(output.pageInfo.nextCursor).toBe('cursor-available-2');
             expect(output.pageInfo.hasMore).toBe(true);
         }

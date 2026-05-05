@@ -303,7 +303,7 @@ paths:
         Searches the prepared availability snapshot for currently unminted `.ton` labels.
         Cursor contract:
         - `cursor` is an opaque server-generated continuation token.
-        - The token binds to the normalized regex, sort order, length filters, boolean filters, first-character filter, and the current snapshot token.
+        - The token binds to the normalized regex, sort order, length filters, boolean filters, first-character filter, dataset tags, dataset categories, and the current snapshot token.
         - Reusing a cursor with different filters or after the snapshot is rebuilt returns `400`.
         - The end of the feed is indicated by `page_info.has_more = false` and `page_info.next_cursor = null`.
       parameters:
@@ -371,6 +371,41 @@ paths:
             minLength: 1
             maxLength: 1
             pattern: '^[a-z0-9]$'
+        - name: tags
+          in: query
+          description: |
+            Optional dataset-backed tag filters. Repeat the parameter or send a comma-separated list.
+            Minted tags are OR-ed together, WEB2 rank tags are OR-ed together, and different tag groups are combined with AND semantics.
+          schema:
+            type: array
+            items:
+              type: string
+              enum:
+                - eth_minted
+                - sol_minted
+                - top_100_web2
+                - top_200_web2
+                - top_500_web2
+                - top_1k_web2
+                - top_2k_web2
+                - top_5k_web2
+                - top_10k_web2
+                - top_50k_web2
+                - top_100k_web2
+                - top_200k_web2
+                - top_500k_web2
+                - top_1m_web2
+          style: form
+          explode: true
+        - name: categories
+          in: query
+          description: Optional exact-match category filters from `available_domains.csv`. Multiple values are combined with OR semantics.
+          schema:
+            type: array
+            items:
+              type: string
+          style: form
+          explode: true
       responses:
         '200':
           description: Available label search results
@@ -3212,13 +3247,83 @@ components:
               properties:
                 items:
                   type: array
-                  description: Available `.ton` labels without the suffix.
+                  description: Available `.ton` labels with dataset metadata.
                   items:
-                    type: string
-              required: [items]
+                    $ref: '#/components/schemas/AvailableLabelItem'
+                filter_options:
+                  $ref: '#/components/schemas/AvailableLabelFilterOptions'
+              required: [items, filter_options]
             page_info:
               $ref: '#/components/schemas/PageInfo'
           required: [data, page_info]
+
+    AvailableLabelItem:
+      type: object
+      properties:
+        label:
+          type: string
+          description: Available `.ton` label without the suffix.
+        category:
+          type: string
+          nullable: true
+          description: Category from `available_domains.csv` when present.
+        tags:
+          type: array
+          items:
+            type: string
+            enum:
+              - eth_minted
+              - sol_minted
+              - top_100_web2
+              - top_200_web2
+              - top_500_web2
+              - top_1k_web2
+              - top_2k_web2
+              - top_5k_web2
+              - top_10k_web2
+              - top_50k_web2
+              - top_100k_web2
+              - top_200k_web2
+              - top_500k_web2
+              - top_1m_web2
+      required: [label, category, tags]
+
+    AvailableLabelFilterTag:
+      type: object
+      properties:
+        value:
+          type: string
+          enum:
+            - eth_minted
+            - sol_minted
+            - top_100_web2
+            - top_200_web2
+            - top_500_web2
+            - top_1k_web2
+            - top_2k_web2
+            - top_5k_web2
+            - top_10k_web2
+            - top_50k_web2
+            - top_100k_web2
+            - top_200k_web2
+            - top_500k_web2
+            - top_1m_web2
+        label:
+          type: string
+      required: [value, label]
+
+    AvailableLabelFilterOptions:
+      type: object
+      properties:
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/AvailableLabelFilterTag'
+        categories:
+          type: array
+          items:
+            type: string
+      required: [tags, categories]
 
     DealListEnvelope:
       allOf:

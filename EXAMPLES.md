@@ -352,9 +352,39 @@ npx @webdom/sdk find-available-labels --regex '^[a-z]{4}$' --limit 2 --has-lette
 
 ```json
 {
-  "items": [
+  "labels": [
     "ably",
     "atom"
+  ],
+  "items": [
+    {
+      "label": "ably",
+      "category": "Business",
+      "tags": [
+        "eth_minted",
+        "top_100_web2"
+      ]
+    },
+    {
+      "label": "atom",
+      "category": null,
+      "tags": []
+    }
+  ],
+  "filterOptions": {
+    "tags": [
+      {
+        "value": "eth_minted",
+        "label": ".eth minted"
+      },
+      {
+        "value": "top_100_web2",
+        "label": "TOP-100 WEB2"
+      }
+    ],
+    "categories": [
+      "Business"
+    ]
   ],
   "pageInfo": {
     "nextCursor": "cursor-available-2",
@@ -1010,8 +1040,34 @@ Available-label search returns plain label strings instead of full domain object
 ```json
 {
   "items": [
-    "ably",
-    "atom"
+    {
+      "label": "ably",
+      "category": "Business",
+      "tags": [
+        "eth_minted",
+        "top_100_web2"
+      ]
+    },
+    {
+      "label": "atom",
+      "category": null,
+      "tags": []
+    }
+  ],
+  "filter_options": {
+    "tags": [
+      {
+        "value": "eth_minted",
+        "label": ".eth minted"
+      },
+      {
+        "value": "top_100_web2",
+        "label": "TOP-100 WEB2"
+      }
+    ],
+    "categories": [
+      "Business"
+    ]
   ],
   "pageInfo": {
     "nextCursor": "cursor-available-2",

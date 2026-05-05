@@ -40,7 +40,8 @@ const labels = await sdk.api.catalog.listAvailableDomainLabels({
     has_letter: true
 });
 
-console.log(labels.items);
+console.log(labels.labels);
+console.log(labels.items[0]?.category, labels.items[0]?.tags);
 
 const details = await sdk.api.domains.get({
     domain_name: 'example.ton'
@@ -143,6 +144,7 @@ const availableLabels = await sdk.api.catalog.listAvailableDomainLabels({
     regex: '^gold',
     limit: 10
 });
+console.log(availableLabels.labels, availableLabels.filterOptions);
 console.log(availableLabels.items, availableLabels.pageInfo, availableLabels.meta);
 
 const marketplaceConfig = await sdk.api.marketplace.getConfig();
@@ -159,7 +161,7 @@ const rawAvailableLabels = await sdk.raw.catalog.listAvailableDomainLabels({
     regex: '^[a-z]{4}$',
     limit: 10
 });
-console.log(rawAvailableLabels.data.items, rawAvailableLabels.page_info);
+console.log(rawAvailableLabels.data.items, rawAvailableLabels.data.filter_options, rawAvailableLabels.page_info);
 
 const rawMarketplaceConfig = await sdk.raw.marketplace.getConfig();
 console.log(rawMarketplaceConfig.data.deploy_configs);

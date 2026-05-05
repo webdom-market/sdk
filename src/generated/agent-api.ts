@@ -256,7 +256,7 @@ export interface paths {
          * @description Searches the prepared availability snapshot for currently unminted `.ton` labels.
          *     Cursor contract:
          *     - `cursor` is an opaque server-generated continuation token.
-         *     - The token binds to the normalized regex, sort order, length filters, boolean filters, first-character filter, and the current snapshot token.
+         *     - The token binds to the normalized regex, sort order, length filters, boolean filters, first-character filter, dataset tags, dataset categories, and the current snapshot token.
          *     - Reusing a cursor with different filters or after the snapshot is rebuilt returns `400`.
          *     - The end of the feed is indicated by `page_info.has_more = false` and `page_info.next_cursor = null`.
          */
@@ -655,10 +655,27 @@ export interface components {
         AgentApiTokenEnvelope: components["schemas"]["BaseEnvelope"] & {
             data: components["schemas"]["AgentApiToken"];
         };
+        AvailableLabelFilterOptions: {
+            categories: string[];
+            tags: components["schemas"]["AvailableLabelFilterTag"][];
+        };
+        AvailableLabelFilterTag: {
+            label: string;
+            /** @enum {string} */
+            value: "eth_minted" | "sol_minted" | "top_100_web2" | "top_200_web2" | "top_500_web2" | "top_1k_web2" | "top_2k_web2" | "top_5k_web2" | "top_10k_web2" | "top_50k_web2" | "top_100k_web2" | "top_200k_web2" | "top_500k_web2" | "top_1m_web2";
+        };
+        AvailableLabelItem: {
+            /** @description Category from `available_domains.csv` when present. */
+            category: string | null;
+            /** @description Available `.ton` label without the suffix. */
+            label: string;
+            tags: ("eth_minted" | "sol_minted" | "top_100_web2" | "top_200_web2" | "top_500_web2" | "top_1k_web2" | "top_2k_web2" | "top_5k_web2" | "top_10k_web2" | "top_50k_web2" | "top_100k_web2" | "top_200k_web2" | "top_500k_web2" | "top_1m_web2")[];
+        };
         AvailableLabelListEnvelope: components["schemas"]["BaseEnvelope"] & {
             data: {
-                /** @description Available `.ton` labels without the suffix. */
-                items: string[];
+                filter_options: components["schemas"]["AvailableLabelFilterOptions"];
+                /** @description Available `.ton` labels with dataset metadata. */
+                items: components["schemas"]["AvailableLabelItem"][];
             };
             page_info: components["schemas"]["PageInfo"];
         };
@@ -1820,6 +1837,8 @@ export interface operations {
     listAvailableDomainLabels: {
         parameters: {
             query: {
+                /** @description Optional exact-match category filters from `available_domains.csv`. Multiple values are combined with OR semantics. */
+                categories?: string[];
                 /**
                  * @description Opaque server-generated continuation token for cursor pagination.
                  *     For offset-based feeds in this API, the token binds to the endpoint ordering and, where applicable, to the explicit `sort` value.
@@ -1847,6 +1866,11 @@ export interface operations {
                 regex: string;
                 /** @description Lexicographic sort direction for the returned labels. */
                 sort_order?: "asc" | "desc";
+                /**
+                 * @description Optional dataset-backed tag filters. Repeat the parameter or send a comma-separated list.
+                 *     Minted tags are OR-ed together, WEB2 rank tags are OR-ed together, and different tag groups are combined with AND semantics.
+                 */
+                tags?: ("eth_minted" | "sol_minted" | "top_100_web2" | "top_200_web2" | "top_500_web2" | "top_1k_web2" | "top_2k_web2" | "top_5k_web2" | "top_10k_web2" | "top_50k_web2" | "top_100k_web2" | "top_200k_web2" | "top_500k_web2" | "top_1m_web2")[];
             };
             header?: never;
             path?: never;
@@ -2373,6 +2397,9 @@ export interface operations {
 export type AddressObject = components["schemas"]["AddressObject"];
 export type AgentApiToken = components["schemas"]["AgentApiToken"];
 export type AgentApiTokenEnvelope = components["schemas"]["AgentApiTokenEnvelope"];
+export type AvailableLabelFilterOptions = components["schemas"]["AvailableLabelFilterOptions"];
+export type AvailableLabelFilterTag = components["schemas"]["AvailableLabelFilterTag"];
+export type AvailableLabelItem = components["schemas"]["AvailableLabelItem"];
 export type AvailableLabelListEnvelope = components["schemas"]["AvailableLabelListEnvelope"];
 export type BackResolveEnvelope = components["schemas"]["BackResolveEnvelope"];
 export type BackResolveResult = components["schemas"]["BackResolveResult"];
